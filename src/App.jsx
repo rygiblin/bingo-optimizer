@@ -218,10 +218,160 @@ const MIC=["#555","#cd7f32","#c0c0c0","#ffd700"];
 const CAT_LABEL={raids:"Raiders",slayer:"Slayers",pvm:"PvMers",skilling:"Skillers",mass:"Mass",challenge:"All"};
 const TEAM_COLORS={"SoccerTheNub":"#f39c12","Indy 500":"#3498db","Before NA":"#e74c3c","funzip":"#2ecc71"};
 
-// MISSING CONSTANTS ADDED HERE TO PREVENT CRASH
-const LBN = 45; // Estimated Line Bonus (Bronze+Silver+Gold = 15+15+15)
-// Estimated cumulative points per Gold Tile (3 tasks * 3 pts = 9)
-const CUM = [0, 9, 18, 27, 36, 45, 54, 63, 72, 81, 90, 99, 108, 117, 126, 135, 144, 153, 162, 171, 180, 189, 198, 207, 216, 225];
+// ─── WIKI ENRICHMENT ────────────────────────────────────────────────────────
+
+const ENRICH_PROMPT = (tileName, tileNotes, tileCategory, taskDesc, taskType, taskNotes, currentHours) => `You are an Old School RuneScape expert. Given this bingo tile task, provide accurate time estimates based on OSRS wiki data.
+
+Tile: "${tileName}" (${tileCategory}) - ${tileNotes}
+Task: "${taskDesc}" (type: ${taskType}) - ${taskNotes}
+Current estimate: ${currentHours}h
+
+CRITICAL RULES for calculating estHours:
+1. OR logic: If the task lists multiple items separated by "/" or "or" (e.g. "Ancy/TBOW", "BCP or tassets"), use the COMBINED drop rate (sum of individual rates), NOT the rate of the rarest item alone. Getting any one of the listed items completes the task.
+2. CoX purples: The unique chest rate is roughly 1/9 per raid at standard team points. The unique table has ~50 items. Mega-rares (TBOW, Kodai, Ancestral pieces) share a small weight. "Ancy/TBOW" means either Ancestral OR Twisted Bow - use combined mega-rare weight (~1/34 of unique rolls = roughly 1/300 per raid at team scale, ~75h at 4 raids/hr).
+3. Team scale: Assume a competent 5-man team for raids, not solo. KC/hr should reflect team play.
+4. Multiple drops needed: If the task requires N of something, multiply expected hours by N.
+5. KC tasks: estHours = kills_required / kcPerHour (deterministic, no RNG multiplier).
+
+Respond ONLY with a JSON object, no markdown, no explanation:
+{
+  "estHours": <number: expected wall-clock hours at base efficiency before team scaling. Apply OR-logic combined rates where applicable>,
+  "dropRate": <number or null: combined drop rate as decimal if OR logic applies, else individual rate. e.g. 0.003 for ~1/300>,
+  "kcPerHour": <number or null: kills or completions per hour for a competent team>,
+  "dropsNeeded": <number or null: how many drops required>,
+  "confidence": <"high"|"medium"|"low">,
+  "wikiNotes": <string: note the calculation used, e.g. "Combined Ancy+TBOW mega-rare rate ~1/300 at team scale". Max 80 chars>
+}`;
+
+// ...existing code...
+async function callEnrichAPI(tileName, tileNotes, tileCategory, task) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch('/api/enrich', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tileName, tileNotes, tileCategory, task })
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`Proxy error ${res.status}: ${txt}`);
+    }
+    const j = await res.json().catch(() => ({}));
+    // proxy returns { ok: true, result: {...} }
+    return j.result || j;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function useWikiData(tiles, setTiles) {
+  const [wikiData, setWikiData] = useState({});
+  const [enriching, setEnriching] = useState({});
+  const [enrichProgress, setEnrichProgress] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const keys = await window.storage.list('wiki:');
+        if (!keys?.keys?.length) return;
+        const loaded = {};
+        for (const key of keys.keys) {
+          try {
+            const res = await window.storage.get(key);
+            if (res?.value) loaded[key.replace('wiki:','')] = JSON.parse(res.value);
+          } catch {}
+        }
+        if (Object.keys(loaded).length > 0) {
+          setWikiData(loaded);
+          setTiles(prev => prev.map(tile => ({
+            ...tile,
+            tasks: tile.tasks.map(task => {
+              const d = loaded[task.id];
+              if (!d) return task;
+              return {...task, estHours: d.estHours, wikiEnriched: true, wikiConfidence: d.confidence, wikiNotes: d.wikiNotes};
+            })
+          })));
+        }
+      } catch {}
+    })();
+  }, []);
+
+  const enrichTask = async (tile, task) => {
+    const taskId = task.id;
+    setEnriching(p => ({...p, [taskId]: true}));
+    try {
+      const result = await callEnrichAPI(tile.name, tile.notes||"", tile.cat, task);
+      const enriched = {
+        estHours: result.estHours,
+        dropRate: result.dropRate,
+        kcPerHour: result.kcPerHour,
+        dropsNeeded: result.dropsNeeded,
+        confidence: result.confidence || "medium",
+        wikiNotes: result.wikiNotes || "",
+        enrichedAt: Date.now()
+      };
+      await window.storage.set(`wiki:${taskId}`, JSON.stringify(enriched));
+      setWikiData(p => ({...p, [taskId]: enriched}));
+      setTiles(prev => prev.map(t => t.id !== tile.id ? t : {
+        ...t,
+        tasks: t.tasks.map(tk => tk.id !== taskId ? tk : {
+          ...tk,
+          estHours: enriched.estHours,
+          wikiEnriched: true,
+          wikiConfidence: enriched.confidence,
+          wikiNotes: enriched.wikiNotes
+        })
+      }));
+      return enriched;
+    } catch(e) {
+      console.error('Enrich failed', taskId, e);
+      return null;
+    } finally {
+      setEnriching(p => {const n={...p}; delete n[taskId]; return n;});
+    }
+  };
+
+  const enrichAll = async (tiles) => {
+    const allTasks = tiles.flatMap(tile => tile.tasks.map(task => ({tile, task})));
+    const needsEnrich = allTasks.filter(({task}) => !wikiData[task.id]);
+    if (!needsEnrich.length) return;
+    setEnrichProgress({done: 0, total: needsEnrich.length, failed: 0, skipped: []});
+    let failed = 0;
+    const skipped = [];
+    for (let i = 0; i < needsEnrich.length; i++) {
+      const {tile, task} = needsEnrich[i];
+      const result = await enrichTask(tile, task);
+      if (!result) {
+        failed++;
+        skipped.push(`${tile.name} / ${task.desc}`);
+      }
+      setEnrichProgress({done: i+1, total: needsEnrich.length, failed, skipped});
+      if (i < needsEnrich.length - 1) await new Promise(r => setTimeout(r, 300));
+    }
+    setTimeout(() => setEnrichProgress(null), 3000);
+  };
+
+  const clearAll = async () => {
+    try {
+      const keys = await window.storage.list('wiki:');
+      if (keys?.keys) for (const k of keys.keys) await window.storage.delete(k);
+    } catch {}
+    setWikiData({});
+    setTiles(prev => prev.map(tile => ({
+      ...tile,
+      tasks: tile.tasks.map(task => {
+        const {wikiEnriched, wikiConfidence, wikiNotes, ...rest} = task;
+        return rest;
+      })
+    })));
+  };
+
+  return {wikiData, enriching, enrichProgress, enrichTask, enrichAll, clearAll};
+}
+
+// ─── END WIKI ENRICHMENT ────────────────────────────────────────────────────
 
 function remS(tile,ds){return tile.tasks.filter(t=>!ds.has(t.id)).sort((a,b)=>a.estHours-b.estHours);}
 
@@ -251,6 +401,33 @@ function calculateScore(done, tiles) {
   return {taskPoints, bonusPoints, total: taskPoints + bonusPoints, bronzeLines, silverLines, goldLines, tasksComplete: done.size};
 }
 
+// Helper: Calculate marginal points from completing N more tasks on a tile
+function getMarginalPoints(tileId, currentTasksOnTile, tasksToAdd, allTileTaskCounts) {
+  const newLevel = currentTasksOnTile + tasksToAdd;
+  const taskPts = tasksToAdd * TASK_POINTS;
+  
+  // Check which lines this tile is on and calculate bingo bonus gains
+  let bonusGain = 0;
+  LINES.filter(l => l.tiles.includes(tileId)).forEach(line => {
+    const otherTileCounts = line.tiles.filter(t => t !== tileId).map(tid => allTileTaskCounts[tid] || 0);
+    
+    // Check bronze bonus
+    if (currentTasksOnTile < 1 && newLevel >= 1) {
+      if (otherTileCounts.every(c => c >= 1)) bonusGain += BRONZE_BONUS;
+    }
+    // Check silver bonus  
+    if (currentTasksOnTile < 2 && newLevel >= 2) {
+      if (otherTileCounts.every(c => c >= 2)) bonusGain += SILVER_BONUS;
+    }
+    // Check gold bonus
+    if (currentTasksOnTile < 3 && newLevel >= 3) {
+      if (otherTileCounts.every(c => c >= 3)) bonusGain += GOLD_BONUS;
+    }
+  });
+  
+  return taskPts + bonusGain;
+}
+
 function pG(tile,hours,effSc){const eh=hours*effSc,so=[...tile.tasks].sort((a,b)=>a.estHours-b.estHours);let cum=0,p=1;for(const t of so){const r=Math.max(0,eh-cum);if(t.type==="kc"||t.type==="challenge"||t.type==="points"){p*=r>=t.estHours?1:Math.min(1,r/t.estHours);}else{if(t.estHours>0)p*=1-Math.exp(-(1/t.estHours)*r);}cum+=t.estHours;}return Math.min(1,p);}
 
 function Dots({c}){return <div style={{display:"flex",gap:2,justifyContent:"center"}}>{[0,1,2].map(i=><div key={i} style={{width:6,height:6,borderRadius:"50%",background:c>i?(i===0?"#cd7f32":i===1?"#c0c0c0":"#ffd700"):"rgba(255,255,255,0.07)"}}/>)}</div>;}
@@ -261,12 +438,30 @@ function VBar({task}){
   return <div style={{marginTop:2}}><div style={{display:"flex",gap:6,fontSize:8,color:"#555",flexWrap:"wrap"}}><span>Lucky:<b style={{color:"#4ade80"}}>{l.toFixed(1)}h</b></span><span>Exp:<b style={{color:"#ffd700"}}>{task.estHours.toFixed(1)}h</b></span><span>Dry:<b style={{color:"#ff8c00"}}>{d.toFixed(1)}h</b></span></div><div style={{position:"relative",height:4,background:"rgba(255,255,255,0.04)",borderRadius:2,marginTop:2,overflow:"hidden"}}><div style={{position:"absolute",left:(l/sd*100)+"%",width:((d-l)/sd*100)+"%",height:"100%",background:"rgba(255,215,0,0.2)"}}/><div style={{position:"absolute",left:(m/sd*100)+"%",width:2,height:"100%",background:"#ffd700"}}/></div></div>;
 }
 
-function TileEditor({tile, onSave, onCancel}){
+function TileEditor({tile, onSave, onCancel, enrichTask, enriching, wikiData}){
   const[name,setName]=useState(tile.name);
   const[notes,setNotes]=useState(tile.notes);
   const[tasks,setTasks]=useState(tile.tasks.map(t=>({...t})));
   const up=(i,f,v)=>setTasks(p=>p.map((t,j)=>j===i?{...t,[f]:f==="estHours"?parseFloat(v)||0:v}:t));
 
+  const handleEnrich = async (i, forceRefresh=false) => {
+    const task = tasks[i];
+    if (forceRefresh) {
+      try { await window.storage.delete(`wiki:${task.id}`); } catch {}
+    }
+    const result = await enrichTask(tile, task);
+    if (result) {
+      setTasks(p => p.map((t,j) => j===i ? {
+        ...t,
+        estHours: result.estHours,
+        wikiEnriched: true,
+        wikiConfidence: result.confidence,
+        wikiNotes: result.wikiNotes
+      } : t));
+    }
+  };
+
+  const confColor = c => c==="high"?"#4ade80":c==="medium"?"#ffd700":"#ff6b6b";
   const ins={background:"#151921",color:"#ddd",border:"1px solid #2a2f3a",borderRadius:3,padding:"3px 6px",fontSize:10,width:"100%",boxSizing:"border-box"};
   const btn=(bg,col,bc)=>({fontSize:8,background:bg,color:col,border:`1px solid ${bc}`,borderRadius:3,padding:"2px 7px",cursor:"pointer",fontWeight:600,fontFamily:"inherit"});
 
@@ -281,15 +476,31 @@ function TileEditor({tile, onSave, onCancel}){
     <div style={{marginBottom:6}}><div style={{fontSize:8,color:"#555",marginBottom:2}}>Name</div><input value={name} onChange={e=>setName(e.target.value)} style={ins}/></div>
     <div style={{marginBottom:8}}><div style={{fontSize:8,color:"#555",marginBottom:2}}>Notes</div><input value={notes} onChange={e=>setNotes(e.target.value)} style={ins}/></div>
     {tasks.map((task,i)=>{
+      const wd = wikiData[task.id];
+      const isEnriching = enriching[task.id];
       return <div key={i} style={{background:"rgba(0,0,0,0.15)",borderRadius:4,padding:6,marginBottom:4}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
           <span style={{fontSize:9,color:MIC[i+1],fontWeight:700}}>Task {i+1}</span>
+          <div style={{display:"flex",alignItems:"center",gap:4}}>
+            {task.wikiEnriched && <span style={{fontSize:7,color:confColor(task.wikiConfidence),background:"rgba(0,0,0,0.3)",padding:"1px 4px",borderRadius:2}}>🌐 wiki · {task.wikiConfidence}</span>}
+            {!task.wikiEnriched && wd && <span style={{fontSize:7,color:"#555"}}>✏ manual</span>}
+            <button onClick={()=>handleEnrich(i)} disabled={isEnriching} style={{...btn(isEnriching?"rgba(255,255,255,0.03)":"rgba(96,165,250,0.12)",isEnriching?"#444":"#60a5fa","rgba(96,165,250,0.3)"),opacity:isEnriching?0.5:1}}>
+              {isEnriching?"⟳ ...":"⚡ Enrich"}
+            </button>
+            {task.wikiEnriched && !isEnriching && <button onClick={()=>handleEnrich(i,true)} title="Clear cache and re-enrich with updated prompt" style={btn("rgba(255,107,107,0.08)","#ff6b6b","rgba(255,107,107,0.2)")}>↻</button>}
+          </div>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:4}}>
           <div><div style={{fontSize:7,color:"#444"}}>Desc</div><input value={task.desc} onChange={e=>up(i,"desc",e.target.value)} style={ins}/></div>
-          <div><div style={{fontSize:7,color:"#444"}}>Hours</div><input type="number" step="0.1" value={task.estHours} onChange={e=>up(i,"estHours",e.target.value)} style={{...ins,color:"#ffd700"}}/></div>
+          <div><div style={{fontSize:7,color:"#444",display:"flex",justifyContent:"space-between"}}><span>Hours</span>{wd&&<span style={{color:confColor(wd.confidence)}}>{wd.estHours.toFixed(1)}h</span>}</div><input type="number" step="0.1" value={task.estHours} onChange={e=>up(i,"estHours",e.target.value)} style={{...ins,color:task.wikiEnriched?"#60a5fa":"#ffd700"}}/></div>
           <div><div style={{fontSize:7,color:"#444"}}>Type</div><select value={task.type} onChange={e=>up(i,"type",e.target.value)} style={ins}><option value="drop">Drop</option><option value="kc">KC</option><option value="points">Pts</option><option value="challenge">Challenge</option></select></div>
         </div>
+        {wd && <div style={{marginTop:3,fontSize:7,color:"#444",fontStyle:"italic",lineHeight:1.3}}>
+          {wd.kcPerHour&&<span style={{marginRight:6}}>⚔️ {wd.kcPerHour}/hr</span>}
+          {wd.dropRate&&<span style={{marginRight:6}}>👀 1/{Math.round(1/wd.dropRate)}</span>}
+          {wd.dropsNeeded&&<span style={{marginRight:6}}>×{wd.dropsNeeded} needed</span>}
+          {wd.wikiNotes&&<span style={{color:"#555"}}>{wd.wikiNotes}</span>}
+        </div>}
       </div>;
     })}
   </div>;
@@ -515,7 +726,7 @@ function LinePlanner({done, tiles, teamPlayers, teamCap}) {
   const BOARD_LINES = useMemo(() => {
     const lines = [];
     for (let r = 0; r < 5; r++) lines.push({name: `Row ${r+1}`, key:`r${r}`, tiles:[r*5+1,r*5+2,r*5+3,r*5+4,r*5+5]});
-    for (let c = 0; c < 5; c++) lines.push({name: `Col ${c+1}`, key:`c${c}`, tiles:[c+1, c+6, c+11, c+16, c+21]});
+    for (let c = 0; c < 5; c++) lines.push({name: `Col ${c+1}`, key:`c${c}`, tiles:[c+1,c+6,c+11,c+16,c+21]});
     return lines;
   }, []);
 
@@ -758,24 +969,33 @@ function WhosOnline({done, tiles, teamPlayers, teamCap}) {
   const activeCap = useMemo(() => teamCapability(activePlayers), [activePlayers]);
 
   const met = useMemo(() => {
-    const goldSet = new Set();
-    tiles.forEach(t => { if(t.tasks.filter(tk=>done.has(tk.id)).length>=3) goldSet.add(t.id); });
-    const gn = goldSet.size;
+    // Build task counts per tile
+    const tileTaskCounts = {};
+    tiles.forEach(t => {
+      tileTaskCounts[t.id] = t.tasks.filter(tk => done.has(tk.id)).length;
+    });
+    
     return tiles.map(tile => {
-      const dc = tile.tasks.filter(tk=>done.has(tk.id)).length;
+      const dc = tileTaskCounts[tile.id];
       const tsDone = new Set(tile.tasks.filter(tk=>done.has(tk.id)).map(tk=>tk.id));
       const rem = remS(tile, tsDone);
       const effSc = effectiveScale(tile.cat, activePlayers.length, activeCap);
       const eH = rem.reduce((s,t)=>s+t.estHours,0) / effSc;
       const cheapest = rem.length > 0 ? rem[0] : null;
       const cheapH = cheapest ? cheapest.estHours/effSc : Infinity;
+      
+      // Calculate marginal points from completing this tile
+      const tasksNeeded = 3 - dc;
+      const mP = tasksNeeded > 0 ? getMarginalPoints(tile.id, dc, tasksNeeded, tileTaskCounts) : 0;
+      
+      // Line score (simplified - just count near-completion lines)
       let lS = 0;
       LINES.filter(l=>l.tiles.includes(tile.id)).forEach(line=>{
-        const og=line.tiles.filter(t=>t!==tile.id&&goldSet.has(t)).length;
-        if(og===4){lS+=200;}else if(og===3){lS+=30;}else if(og===2)lS+=5;
+        const otherComplete = line.tiles.filter(t=>t!==tile.id && tileTaskCounts[t]>=3).length;
+        if(otherComplete===4){lS+=200;}else if(otherComplete===3){lS+=30;}else if(otherComplete===2)lS+=5;
       });
-      const cP=CUM[Math.min(gn,12)]||0,nP=dc<3?(CUM[Math.min(gn+1,12)]||0):cP,mP=nP-cP;
-      const lb=lS>100?LBN:0,ef=eH>0?(mP+lb)/eH:0;
+      
+      const ef=eH>0?(mP)/eH:0;
       const sm=eH>0?(ef*10)+(lS*0.3)+(mP*0.5)-(eH*0.1):0;
 
       // Can current online players actually do this tile?
@@ -893,14 +1113,21 @@ function TeamRoles({done,tiles,teamPlayers,teamCap}){
   const[filterCat,setFilterCat]=useState("all");
   const[sortBy,setSortBy]=useState("pph");
   const tileData=useMemo(()=>{
-    const goldSet=new Set(tiles.filter(t=>t.tasks.filter(tk=>done.has(tk.id)).length>=3).map(t=>t.id));
-    const gn=goldSet.size,curPts=CUM[Math.min(gn,12)]||0,nxtPts=CUM[Math.min(gn+1,12)]||0,mPts=nxtPts-curPts;
-    return tiles.filter(t=>t.tasks.filter(tk=>done.has(tk.id)).length<3).map(tile=>{
-      const dc=tile.tasks.filter(tk=>done.has(tk.id)).length,doneTasks=new Set(tile.tasks.filter(tk=>done.has(tk.id)).map(tk=>tk.id));
+    const tileTaskCounts = {};
+    tiles.forEach(t => {
+      tileTaskCounts[t.id] = t.tasks.filter(tk => done.has(tk.id)).length;
+    });
+    
+    return tiles.filter(t=>tileTaskCounts[t.id]<3).map(tile=>{
+      const dc=tileTaskCounts[tile.id],doneTasks=new Set(tile.tasks.filter(tk=>done.has(tk.id)).map(tk=>tk.id));
       const remaining=remS(tile,doneTasks),effSc=effectiveScale(tile.cat,teamPlayers.length,teamCap);
       const needCount=3-dc;let hoursToGold=0;
       for(let j=0;j<needCount&&j<remaining.length;j++)hoursToGold+=remaining[j].estHours/effSc;
-      let lineVal=0;LINES.filter(l=>l.tiles.includes(tile.id)).forEach(line=>{const og=line.tiles.filter(t=>t!==tile.id&&goldSet.has(t)).length;if(og===4)lineVal+=LBN;else if(og===3)lineVal+=LBN*0.3;});
+      
+      // Calculate marginal points
+      const mPts = getMarginalPoints(tile.id, dc, needCount, tileTaskCounts);
+      
+      let lineVal=0;LINES.filter(l=>l.tiles.includes(tile.id)).forEach(line=>{const og=line.tiles.filter(t=>t!==tile.id&&tileTaskCounts[t]>=3).length;if(og===4)lineVal+=45;else if(og===3)lineVal+=13.5;});
       const pphFull=hoursToGold>0?(mPts+lineVal)/hoursToGold:0,nextTask=remaining[0]||null,nextHours=nextTask?nextTask.estHours/effSc:0;
       const totalTaskHrs=remaining.slice(0,needCount).reduce((s,t)=>s+t.estHours,0);
       const tF=teamCategoryHours(teamPlayers,tile.cat,"floor"),tE=teamCategoryHours(teamPlayers,tile.cat,"expected");
@@ -1044,9 +1271,8 @@ export default function App(){
   const[tiles,setTiles]=useState(INIT_TILES.map(t=>({...t,tasks:t.tasks.map(tk=>({...tk}))})));
   const[editing,setEditing]=useState(false);
 
-  // Enrichment disabled for local version - uncomment in claude.ai artifact
-  // const {wikiData, enriching, enrichProgress, enrichTask, enrichAll, clearAll} = useWikiData(tiles, setTiles);
-  const wikiData={}, enriching={}, enrichProgress=null, enrichTask=()=>{}, enrichAll=()=>{}, clearAll=()=>{};
+  // Wiki enrichment enabled
+  const {wikiData, enriching, enrichProgress, enrichTask, enrichAll, clearAll} = useWikiData(tiles, setTiles);
 
   const teamPlayers=useMemo(()=>TEAMS[selectedTeam]||[],[selectedTeam]);
   const teamCap=useMemo(()=>teamCapability(teamPlayers),[teamPlayers]);
@@ -1056,23 +1282,43 @@ export default function App(){
   const saveTile=useCallback(u=>{setTiles(p=>p.map(t=>t.id===u.id?u:t));setEditing(false);},[]);
 
   const met=useMemo(()=>{
-    const goldSet=new Set();tiles.forEach(t=>{if(t.tasks.filter(tk=>done.has(tk.id)).length>=3)goldSet.add(t.id);});
-    const gn=goldSet.size;
+    const tileTaskCounts = {};
+    tiles.forEach(t => {
+      tileTaskCounts[t.id] = t.tasks.filter(tk => done.has(tk.id)).length;
+    });
+    
     return tiles.map(tile=>{
-      const dc=tile.tasks.filter(tk=>done.has(tk.id)).length,tsDone=new Set(tile.tasks.filter(tk=>done.has(tk.id)).map(tk=>tk.id));
+      const dc=tileTaskCounts[tile.id],tsDone=new Set(tile.tasks.filter(tk=>done.has(tk.id)).map(tk=>tk.id));
       const rem=remS(tile,tsDone),rH=rem.reduce((s,t)=>s+t.estHours,0);
       const effSc=effectiveScale(tile.cat,tSz,teamCap),eH=rH/effSc;
       const cheapest=rem.length>0?rem[0]:null,cheapH=cheapest?cheapest.estHours/effSc:Infinity;
       let lS=0,nL=[];
-      LINES.filter(l=>l.tiles.includes(tile.id)).forEach(line=>{const og=line.tiles.filter(t=>t!==tile.id&&tiles.find(x=>x.id===t)?.tasks.filter(tk=>done.has(tk.id)).length>=3).length;if(og===4){lS+=200;nL.push({...line,need:1});}else if(og===3){lS+=30;nL.push({...line,need:2});}else if(og===2)lS+=5;});
-      const cP=CUM[Math.min(gn,12)]||0,nP=dc<3?(CUM[Math.min(gn+1,12)]||0):cP,mP=nP-cP;
-      const lb=lS>100?LBN:0,ef=eH>0?(mP+lb)/eH:0,sm=eH>0?(ef*10)+(lS*0.3)+(mP*0.5)-(eH*0.1):0;
+      LINES.filter(l=>l.tiles.includes(tile.id)).forEach(line=>{const og=line.tiles.filter(t=>t!==tile.id&&tileTaskCounts[t]>=3).length;if(og===4){lS+=200;nL.push({...line,need:1});}else if(og===3){lS+=30;nL.push({...line,need:2});}else if(og===2)lS+=5;});
+      
+      // Calculate marginal points
+      const tasksNeeded = 3 - dc;
+      const mP = tasksNeeded > 0 ? getMarginalPoints(tile.id, dc, tasksNeeded, tileTaskCounts) : 0;
+      
+      const ef=eH>0?(mP)/eH:0,sm=eH>0?(ef*10)+(lS*0.3)+(mP*0.5)-(eH*0.1):0;
       return{...tile,dc,rem,rH,eH,cheapest,cheapH,lS,nL,mP,ef,sm,effSc};
     });
   },[done,tSz,tiles,teamCap]);
 
   const pri=useMemo(()=>[...met.filter(t=>t.dc<3)].sort((a,b)=>sort==="smart"?b.sm-a.sm:sort==="fast"?a.cheapH-b.cheapH:sort==="value"?b.mP-a.mP:b.lS-a.lS),[met,sort]);
-  const st=useMemo(()=>{const g=met.filter(t=>t.dc>=3).length,tp=CUM[Math.min(g,12)]||0,ld=LINES.filter(l=>l.tiles.every(t=>met.find(m=>m.id===t)?.dc>=3)).length;return{g,tp,lp:ld*LBN,total:tp+ld*LBN,ld,hl:met.reduce((s,t)=>s+t.eH,0),b:met.filter(t=>t.dc>=1).length,s:met.filter(t=>t.dc>=2).length};},[met]);
+  
+  const st=useMemo(()=>{
+    const score = calculateScore(done, tiles);
+    return{
+      g: score.goldLines,
+      tp: score.taskPoints,
+      lp: score.bonusPoints,
+      total: score.total,
+      ld: score.bronzeLines + score.silverLines + score.goldLines,
+      hl: met.reduce((s,t)=>s+t.eH,0),
+      b: met.filter(t=>t.dc>=1).length,
+      s: met.filter(t=>t.dc>=2).length
+    };
+  },[met,done,tiles]);
 
   const sel=selT?met.find(t=>t.id===selT):null;
   const hlTiles=hlL?LINES.find(l=>l.name===hlL)?.tiles||[]:[];
