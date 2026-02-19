@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import "./App.css";
 
-// Feb 19 3PM EST = 20:00 UTC | Mar 1 12PM EST = 17:00 UTC
-const EVENT_START = new Date('2026-02-19T20:00:00Z');
+// Feb 20 3PM EST = 20:00 UTC | Mar 1 12PM EST = 17:00 UTC
+const EVENT_START = new Date('2026-02-20T20:00:00Z');
 const EVENT_END   = new Date('2026-03-01T17:00:00Z');
 const EVENT_HOURS_WALL = (EVENT_END - EVENT_START) / 36e5; // ~237h total wall clock
 // Full days inside the window (Sat Feb 20 – Sat Feb 28 = 9 full days)
@@ -203,6 +203,7 @@ const INIT_TILES=[
 
 const TILE_STATE_KEY = "bingo:tiles:v1";
 const DONE_STATE_KEY = "bingo:done:v1";
+const COMPLETION_LOG_KEY = "bingo:completion_log:v1";
 
 function defaultWorkMode(tile) {
   if ((tile.tasks || []).some(t => t.type === "raid")) return "raid";
@@ -316,6 +317,14 @@ function loadSavedDone() {
     return Array.isArray(parsed) ? new Set(parsed) : new Set();
   } catch {
     return new Set();
+  }
+}
+function loadCompletionLog() {
+  try {
+    const raw = localStorage.getItem(COMPLETION_LOG_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
   }
 }
 function tileScale(tile, teamSize, teamCap) {
@@ -1732,9 +1741,83 @@ function TeamCompare(){
   </div>;
 }
 
+function ProgressChart({ completionLog, tiles, doneCount }) {
+  const VB_W=500, VB_H=72, PL=28, PR=6, PT=5, PB=20;
+  const CW=VB_W-PL-PR, CH=VB_H-PT-PB;
+  const now=Date.now();
+  const domS=EVENT_START.getTime(), domE=EVENT_END.getTime();
+  const beforeEvent=now<domS;
+  const xS=ts=>PL+Math.max(0,Math.min(1,(ts-domS)/(domE-domS)))*CW;
+  const yS=pts=>PT+(1-Math.min(1,pts/675))*CH;
+
+  // Build steps with actual cumulative score (incl. bingo bonuses)
+  const steps=useMemo(()=>{
+    const sorted=Object.entries(completionLog).sort((a,b)=>a[1]-b[1]);
+    const acc=new Set();
+    return sorted.map(([id,ts])=>{acc.add(id);return{ts,pts:calculateScore(acc,tiles).total};});
+  },[completionLog,tiles]);
+
+  // SVG step path
+  let pathD=`M ${PL} ${PT+CH}`;
+  for(const s of steps){pathD+=` H ${xS(s.ts)} V ${yS(s.pts)}`;}
+  const nowX=Math.min(PL+CW, beforeEvent?PL:xS(now));
+  pathD+=` H ${nowX}`;
+
+  const earnedPts=steps[steps.length-1]?.pts||0;
+  const firstTs=steps[0]?.ts;
+  const elapsedHrs=firstTs?(now-firstTs)/3600000:0;
+  const pace=elapsedHrs>0.05?earnedPts/elapsedHrs:null;
+  const projPts=pace?Math.round(Math.min(675,pace*EVENT_HOURS_WALL)):null;
+
+  return <div style={{marginTop:10}}>
+    <div style={{fontSize:7,color:"#8a7a5a",fontWeight:600,letterSpacing:2,marginBottom:2}}>PROGRESS</div>
+    <svg width="100%" viewBox={`0 0 ${VB_W} ${VB_H}`} style={{display:"block"}}>
+      <defs>
+        <linearGradient id="pgGrad" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#ffd700" stopOpacity="0.20"/>
+          <stop offset="100%" stopColor="#ffd700" stopOpacity="0.02"/>
+        </linearGradient>
+        <clipPath id="pgClip"><rect x={PL} y={PT} width={CW} height={CH}/></clipPath>
+      </defs>
+      {/* Background */}
+      <rect x={PL} y={PT} width={CW} height={CH} fill="rgba(255,220,150,0.025)" rx="1"/>
+      {/* Subtle horizontal grid */}
+      {[0.25,0.5,0.75].map(f=><line key={f} x1={PL} y1={PT+CH*(1-f)} x2={PL+CW} y2={PT+CH*(1-f)} stroke="rgba(255,220,150,0.07)" strokeWidth="1"/>)}
+      {/* Ideal pace reference (dashed) */}
+      <line x1={PL} y1={PT+CH} x2={PL+CW} y2={PT} stroke="rgba(255,220,150,0.22)" strokeDasharray="4 3" strokeWidth="1"/>
+      {/* Step fill + line */}
+      {steps.length>0&&<g clipPath="url(#pgClip)">
+        <path d={pathD+` V ${PT+CH} H ${PL} Z`} fill="url(#pgGrad)"/>
+        <path d={pathD} fill="none" stroke="#ffd700" strokeWidth="1.5" strokeLinejoin="miter"/>
+      </g>}
+      {/* Now marker */}
+      {!beforeEvent&&<line x1={nowX} y1={PT} x2={nowX} y2={PT+CH} stroke="rgba(255,255,255,0.22)" strokeDasharray="2 2" strokeWidth="1"/>}
+      {/* Y axis */}
+      <line x1={PL} y1={PT} x2={PL} y2={PT+CH} stroke="rgba(255,220,150,0.18)" strokeWidth="1"/>
+      <text x={PL-2} y={PT+5} fontSize="6" fill="#5a4a2a" textAnchor="end">675</text>
+      <text x={PL-2} y={PT+CH+1} fontSize="6" fill="#5a4a2a" textAnchor="end">0</text>
+      {earnedPts>0&&earnedPts<600&&<text x={PL-2} y={yS(earnedPts)+2} fontSize="6" fill="#ffd700" textAnchor="end">{earnedPts}</text>}
+      {/* X axis labels */}
+      <text x={PL} y={VB_H-2} fontSize="6" fill="#5a4a2a">Start</text>
+      <text x={PL+CW} y={VB_H-2} fontSize="6" fill="#5a4a2a" textAnchor="end">End</text>
+      {!beforeEvent&&nowX>PL+20&&nowX<PL+CW-20&&<text x={nowX} y={VB_H-2} fontSize="6" fill="#6a5a3a" textAnchor="middle">Now</text>}
+      {/* Empty state */}
+      {steps.length===0&&<text x={PL+CW/2} y={PT+CH/2+2} fontSize="7" fill="#3a2a1a" textAnchor="middle">
+        {beforeEvent?`${doneCount} task${doneCount!==1?"s":""} queued · event starts tomorrow`:"no completions recorded"}
+      </text>}
+    </svg>
+    {steps.length>0&&<div style={{display:"flex",gap:6,fontSize:7,color:"#8a7a5a",marginTop:2}}>
+      <span style={{color:"#ffd700",fontWeight:700}}>{earnedPts}pts</span>
+      {pace&&<><span>·</span><span>{pace.toFixed(1)}<span style={{color:"#5a4a2a"}}> pts/hr</span></span></>}
+      {projPts&&<><span>·</span><span>proj <b style={{color:"#ffd700"}}>{projPts}</b>/675</span></>}
+    </div>}
+  </div>;
+}
+
 export default function App(){
   const[selectedTeam,setSelectedTeam]=useState("SoccerTheNub");
   const[done,setDone]=useState(()=>loadSavedDone());
+  const[completionLog,setCompletionLog]=useState(()=>loadCompletionLog());
   const[selT,setSelT]=useState(null);
   const[sort,setSort]=useState("smart");
   const[hlL,setHlL]=useState(null);
@@ -1749,7 +1832,11 @@ export default function App(){
   const teamCap=useMemo(()=>teamCapability(teamPlayers),[teamPlayers]);
   const tSz=teamPlayers.length;
 
-  const toggleDone=useCallback(taskId=>{setDone(p=>{const n=new Set(p);if(n.has(taskId))n.delete(taskId);else n.add(taskId);return n;});},[]);
+  const toggleDone=useCallback(taskId=>{
+    setDone(prev=>{const n=new Set(prev);const marking=!n.has(taskId);if(marking)n.add(taskId);else n.delete(taskId);
+      setCompletionLog(log=>{const nl={...log};if(marking)nl[taskId]=Date.now();else delete nl[taskId];try{localStorage.setItem(COMPLETION_LOG_KEY,JSON.stringify(nl));}catch{}return nl;});
+      return n;});
+  },[]);
   const saveTile=useCallback(u=>{const nu=normTile(u);setTiles(p=>p.map(t=>t.id===nu.id?nu:t));setEditing(false);},[]);
 
   useEffect(() => {
@@ -1796,13 +1883,12 @@ export default function App(){
     const score = calculateScore(done, tiles);
     return{
       g: score.goldLines,
+      sv: score.silverLines,
+      b: score.bronzeLines,
       tp: score.taskPoints,
       lp: score.bonusPoints,
       total: score.total,
-      ld: score.bronzeLines + score.silverLines + score.goldLines,
       hl: met.reduce((s,t)=>s+t.eH,0),
-      b: met.filter(t=>t.dc>=1).length,
-      s: met.filter(t=>t.dc>=2).length
     };
   },[met,done,tiles]);
 
@@ -1813,11 +1899,11 @@ export default function App(){
   return <div className="app-root" style={{padding:14,boxSizing:"border-box"}}>
     <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
     <div className="app-header" style={{textAlign:"center",marginBottom:8}}>
-      <div style={{fontSize:8,letterSpacing:4,color:"#444",textTransform:"uppercase"}}>Old School RuneScape</div>
+      <div style={{fontSize:8,letterSpacing:4,color:"#7a6a4a",textTransform:"uppercase"}}>Old School RuneScape</div>
       <h1 style={{fontSize:22,fontWeight:900,margin:"2px 0",letterSpacing:2,background:"linear-gradient(90deg,#cd7f32,#ffd700,#cd7f32)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>BINGO OPTIMIZER</h1>
       <div className="app-header-actions" style={{display:"flex",justifyContent:"center",alignItems:"center",gap:10,marginTop:4}}>
         <Countdown/>
-        <button onClick={clearAll} style={{fontSize:7,background:"rgba(255,255,255,0.02)",color:"#333",border:"1px solid rgba(255,255,255,0.04)",borderRadius:2,padding:"1px 6px",cursor:"pointer",fontFamily:"inherit"}}>clear wiki cache</button>
+        <button onClick={clearAll} style={{fontSize:7,background:"rgba(255,220,150,0.04)",color:"#7a6a4a",border:"1px solid rgba(255,220,150,0.10)",borderRadius:2,padding:"1px 6px",cursor:"pointer",fontFamily:"inherit"}}>clear wiki cache</button>
       </div>
     </div>
 
@@ -1845,19 +1931,19 @@ export default function App(){
         })}
       </div>
       <div className="app-controls-row" style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap",padding:"4px 8px"}}>
-        <label style={{display:"flex",alignItems:"center",gap:4,fontSize:10,color:"#555"}}>Sort
-          <select value={sort} onChange={e=>setSort(e.target.value)} style={{background:"#151921",color:"#ddd",border:"1px solid #2a2f3a",borderRadius:3,padding:"2px 4px",fontSize:10}}>
+        <label style={{display:"flex",alignItems:"center",gap:4,fontSize:10,color:"#8a7a5a"}}>Sort
+          <select value={sort} onChange={e=>setSort(e.target.value)} style={{background:"#28241a",color:"#c8b898",border:"1px solid rgba(255,220,150,0.15)",borderRadius:3,padding:"2px 4px",fontSize:10}}>
             <option value="smart">Smart</option><option value="fast">Cheapest</option><option value="value">Value</option><option value="line">Line</option>
           </select>
         </label>
-        <span style={{fontSize:8,color:"#333",alignSelf:"center"}}>{tSz} players · {Math.round(teamPlayers.reduce((s,p)=>s+playerEventHours(p.hours,'floor'),0))}h floor · {Math.round(teamPlayers.reduce((s,p)=>s+playerEventHours(p.hours,'expected'),0))}h expected</span>
+        <span style={{fontSize:8,color:"#6a5a3a",alignSelf:"center"}}>{tSz} players · {Math.round(teamPlayers.reduce((s,p)=>s+playerEventHours(p.hours,'floor'),0))}h floor · {Math.round(teamPlayers.reduce((s,p)=>s+playerEventHours(p.hours,'expected'),0))}h expected</span>
       </div>
     </div>
 
     <div className="kpi-row" style={{display:"flex",gap:5,justifyContent:"center",flexWrap:"wrap",marginBottom:8}}>
-      {[{l:"Pts",v:st.total,s:st.tp+"+"+st.lp,c:"#ffd700"},{l:"Gold",v:st.g+"/25",s:"S:"+st.s+" B:"+st.b,c:"#ffd700"},{l:"Lines",v:st.ld+"/12",s:"+"+st.lp,c:"#60a5fa"},{l:"Rem hrs",v:Math.round(st.hl)+"h",s:"team-scaled",c:"#f472b6"}].map((s,i)=>(
-        <div key={i} style={{background:"rgba(255,255,255,0.02)",borderRadius:4,padding:"5px 9px",border:"1px solid rgba(255,255,255,0.04)",textAlign:"center",minWidth:70}}>
-          <div style={{fontSize:7,color:"#444",letterSpacing:1}}>{s.l}</div><div style={{fontSize:15,fontWeight:900,color:s.c}}>{s.v}</div><div style={{fontSize:7,color:"#333"}}>{s.s}</div>
+      {[{l:"Pts",v:st.total,s:st.tp+"+"+st.lp,c:"#ffd700"},{l:"Gold",v:st.g+"/10",s:"bingos",c:"#ffd700"},{l:"Silver",v:st.sv+"/10",s:"bingos",c:"#c0c0c0"},{l:"Bronze",v:st.b+"/10",s:"bingos",c:"#cd7f32"},{l:"Rem hrs",v:Math.round(st.hl)+"h",s:"team-scaled",c:"#f472b6"}].map((s,i)=>(
+        <div key={i} style={{background:"rgba(255,220,150,0.05)",borderRadius:4,padding:"5px 9px",border:"1px solid rgba(255,220,150,0.12)",textAlign:"center",minWidth:65}}>
+          <div style={{fontSize:7,color:"#8a7a5a",letterSpacing:1}}>{s.l}</div><div style={{fontSize:15,fontWeight:900,color:s.c}}>{s.v}</div><div style={{fontSize:7,color:"#6a5a3a"}}>{s.s}</div>
         </div>
       ))}
     </div>
@@ -1866,89 +1952,79 @@ export default function App(){
 
     <div className="app-main-grid" style={{display:"grid",gap:12,alignItems:"flex-start"}}>
       <div className="board-pane">
-        <div style={{fontSize:7,color:"#333",marginBottom:4}}>Task hours are raw; tile ~h is projected with scale mode + team capabilities (SOLO/RAID/MASS)</div>
-        <div className="board-grid" style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:3}}>
+        <div className="board-grid" style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:4,marginBottom:0}}>
           {tiles.map(tile=>{const m=met.find(t=>t.id===tile.id),rk=pri.findIndex(t=>t.id===tile.id),iS=selT===tile.id,iH=hlTiles.includes(tile.id);
           const mode = tile.workMode || defaultWorkMode(tile);
-          return <div key={tile.id} onClick={()=>{setSelT(tile.id===selT?null:tile.id);setEditing(false);}} style={{background:m.dc>=3?"rgba(255,215,0,0.07)":m.dc>=1?"rgba(205,127,50,0.04)":"rgba(255,255,255,0.01)",border:"2px solid "+(iS?"#ffd700":iH?"#60a5fa":m.dc>=3?"rgba(255,215,0,0.18)":"rgba(255,255,255,0.04)"),borderRadius:4,padding:"3px 2px",cursor:"pointer",textAlign:"center",minHeight:54,position:"relative",transition:"all 0.15s",transform:iS?"scale(1.05)":"scale(1)"}}>
+          return <div key={tile.id} onClick={()=>{setSelT(tile.id===selT?null:tile.id);setEditing(false);}} style={{background:m.dc>=3?"rgba(255,215,0,0.10)":m.dc>=1?"rgba(205,127,50,0.07)":"rgba(255,220,150,0.03)",border:"2px solid "+(iS?"#ffd700":iH?"#60a5fa":m.dc>=3?"rgba(255,215,0,0.25)":"rgba(255,220,150,0.10)"),borderRadius:4,padding:"4px 2px",cursor:"pointer",textAlign:"center",minHeight:54,position:"relative",transition:"all 0.15s",transform:iS?"scale(1.05)":"scale(1)"}}>
             {rk>=0&&rk<5&&m.dc<3&&<div style={{position:"absolute",top:-3,right:-3,zIndex:2,width:13,height:13,borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:900,color:"#000",background:rk===0?"#ff3333":rk<3?"#ff8800":"#ffcc00"}}>{rk+1}</div>}
             <div style={{position:"absolute",top:2,left:2,width:3,height:3,borderRadius:2,background:CC[tile.cat]}}/>
             <div title={modeHint(mode)} style={{position:"absolute",top:2,right:2,fontSize:5,color:"#8ab4f8",fontWeight:700}}>{modeLabel(mode)}</div>
-            <div style={{fontSize:7,color:"#444",fontWeight:600}}>#{tile.id}</div>
-            <div style={{fontSize:8,fontWeight:700,color:m.dc>=3?"#ffd700":"#888",lineHeight:1.1,margin:"1px 0 2px"}}>{tile.name}</div>
+            <div style={{fontSize:7,color:"#7a6a4a",fontWeight:600}}>#{tile.id}</div>
+            <div style={{fontSize:8,fontWeight:700,color:m.dc>=3?"#ffd700":"#a09070",lineHeight:1.1,margin:"1px 0 2px"}}>{tile.name}</div>
             <Dots c={m.dc}/>
-            <div style={{fontSize:6,color:"#333",marginTop:1}}>{m.dc>=3?"DONE":"~"+Math.round(m.eH)+"h"}</div>
+            <div style={{fontSize:6,color:"#6a5a3a",marginTop:1}}>{m.dc>=3?"DONE":"~"+Math.round(m.eH)+"h"}</div>
           </div>;})}
         </div>
+        <ProgressChart completionLog={completionLog} tiles={tiles} doneCount={done.size}/>
       </div>
 
       <div className="details-pane" style={{minWidth:0}}>
-        {sel&&!editing&&<div style={{background:"rgba(255,255,255,0.02)",borderRadius:5,border:"1px solid rgba(255,215,0,0.1)",padding:8,marginBottom:8}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
-            <div><div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:7,padding:"1px 4px",borderRadius:2,background:CC[sel.cat],color:"#fff",fontWeight:700}}>{sel.cat}</span><span style={{fontSize:7,padding:"1px 4px",borderRadius:2,background:"rgba(96,165,250,0.12)",color:"#60a5fa",fontWeight:700}}>{sel.workMode || defaultWorkMode(sel)}</span><span style={{fontSize:13,fontWeight:800,color:"#ffd700"}}>#{sel.id} {sel.name}</span></div><p style={{fontSize:8,color:"#444",margin:"1px 0 0"}}>{sel.notes}</p></div>
-            <button onClick={()=>setEditing(true)} style={{fontSize:8,background:"rgba(96,165,250,0.12)",color:"#60a5fa",border:"1px solid rgba(96,165,250,0.3)",borderRadius:3,padding:"2px 8px",cursor:"pointer",fontWeight:600}}>Edit</button>
+
+        {/* Tile detail — shown first so it's immediately visible on click */}
+        {sel&&!editing&&<div style={{background:"rgba(255,220,150,0.04)",borderRadius:5,border:"1px solid rgba(255,215,0,0.12)",padding:"5px 8px",marginBottom:6}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+            <div><div style={{display:"flex",alignItems:"center",gap:3,flexWrap:"wrap"}}><span style={{fontSize:7,padding:"1px 4px",borderRadius:2,background:CC[sel.cat],color:"#fff",fontWeight:700}}>{sel.cat}</span><span style={{fontSize:7,padding:"1px 4px",borderRadius:2,background:"rgba(96,165,250,0.12)",color:"#60a5fa",fontWeight:700}}>{sel.workMode || defaultWorkMode(sel)}</span><span style={{fontSize:12,fontWeight:800,color:"#ffd700"}}>#{sel.id} {sel.name}</span></div>{sel.notes&&<p style={{fontSize:7,color:"#8a7a5a",margin:"1px 0 0"}}>{sel.notes}</p>}</div>
+            <button onClick={()=>setEditing(true)} style={{fontSize:8,background:"rgba(96,165,250,0.12)",color:"#60a5fa",border:"1px solid rgba(96,165,250,0.3)",borderRadius:3,padding:"2px 6px",cursor:"pointer",fontWeight:600,flexShrink:0,marginLeft:4}}>Edit</button>
           </div>
           {sel.tasks.map((task)=>{const isDone=done.has(task.id),isRec=sel.cheapest&&sel.cheapest.id===task.id&&!isDone;const tType=normalizeTaskType(task.type);
-          return <div key={task.id} style={{display:"flex",alignItems:"flex-start",gap:6,background:isDone?"rgba(74,222,128,0.04)":isRec?"rgba(255,215,0,0.04)":"rgba(255,255,255,0.005)",borderRadius:4,padding:"5px 6px",marginBottom:2,border:"1px solid "+(isDone?"rgba(74,222,128,0.12)":isRec?"rgba(255,215,0,0.15)":"rgba(255,255,255,0.02)")}}>
-            <div onClick={e=>{e.stopPropagation();toggleDone(task.id);}} style={{width:16,height:16,borderRadius:3,flexShrink:0,cursor:"pointer",marginTop:1,display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid "+(isDone?"#4ade80":isRec?"#ffd700":"#333"),background:isDone?"rgba(74,222,128,0.2)":"transparent",fontSize:10,color:"#4ade80",fontWeight:900}}>{isDone?"✓":""}</div>
+          return <div key={task.id} style={{display:"flex",alignItems:"flex-start",gap:5,background:isDone?"rgba(74,222,128,0.05)":isRec?"rgba(255,215,0,0.05)":"rgba(255,220,150,0.02)",borderRadius:3,padding:"3px 5px",marginBottom:2,border:"1px solid "+(isDone?"rgba(74,222,128,0.14)":isRec?"rgba(255,215,0,0.18)":"rgba(255,220,150,0.06)")}}>
+            <div onClick={e=>{e.stopPropagation();toggleDone(task.id);}} style={{width:14,height:14,borderRadius:3,flexShrink:0,cursor:"pointer",marginTop:1,display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid "+(isDone?"#4ade80":isRec?"#ffd700":"#5a4a30"),background:isDone?"rgba(74,222,128,0.2)":"transparent",fontSize:9,color:"#4ade80",fontWeight:900}}>{isDone?"✓":""}</div>
             <div style={{flex:1,opacity:isDone?0.5:1}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontSize:10,fontWeight:600,color:isDone?"#4ade80":isRec?"#ffd700":"#bbb"}}>{isRec&&<span style={{fontSize:8,marginRight:3}}>⭐</span>}{task.desc}</span>
-                <div style={{display:"flex",alignItems:"center",gap:3}}>
-                  <span style={{fontSize:6,color:"#888",background:"rgba(255,255,255,0.05)",padding:"0px 3px",borderRadius:1}}>{taskTypeLabel(tType)}</span>
-                  {task.wikiEnriched&&<span style={{fontSize:6,color:task.wikiConfidence==="high"?"#4ade80":task.wikiConfidence==="medium"?"#ffd700":"#ff6b6b",background:"rgba(0,0,0,0.3)",padding:"0px 3px",borderRadius:1}}>🌐</span>}
-                  <span style={{fontSize:8,color:task.wikiEnriched?"#60a5fa":"#555"}}>
-                    {task.estHours}h raw
-                    {normalizeTaskType(task.type)==="kc" && taskTargetAmount(task)>0 ? ` · ${taskDisplayHours(task).toFixed(1)}h rem` : ""}
-                  </span>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:4}}>
+                <span style={{fontSize:9,fontWeight:600,color:isDone?"#4ade80":isRec?"#ffd700":"#c8b898"}}>{isRec&&<span style={{fontSize:7,marginRight:2}}>⭐</span>}{task.desc}</span>
+                <div style={{display:"flex",alignItems:"center",gap:3,flexShrink:0}}>
+                  <span style={{fontSize:6,color:"#8a7a5a",background:"rgba(255,220,150,0.06)",padding:"0 3px",borderRadius:1}}>{taskTypeLabel(tType)}</span>
+                  {task.wikiEnriched&&<span style={{fontSize:6,color:task.wikiConfidence==="high"?"#4ade80":task.wikiConfidence==="medium"?"#ffd700":"#ff6b6b",background:"rgba(0,0,0,0.2)",padding:"0 3px",borderRadius:1}}>🌐</span>}
+                  <span style={{fontSize:7,color:task.wikiEnriched?"#60a5fa":"#7a6a4a"}}>{task.estHours}h{normalizeTaskType(task.type)==="kc"&&taskTargetAmount(task)>0?` · ${taskDisplayHours(task).toFixed(1)}h rem`:""}</span>
                 </div>
               </div>
-              <div style={{fontSize:8,color:"#444"}}>{task.notes}</div>
-              {task.wikiNotes&&<div style={{fontSize:7,color:"#3a5a3a",fontStyle:"italic"}}>{task.wikiNotes}</div>}
+              {task.notes&&<div style={{fontSize:7,color:"#8a7a5a"}}>{task.notes}</div>}
+              {task.wikiNotes&&<div style={{fontSize:7,color:"#4a6a3a",fontStyle:"italic"}}>{task.wikiNotes}</div>}
               {!isDone&&<VBar task={task}/>}
-              {isRec&&<div style={{fontSize:8,color:"#ffd700",marginTop:2,fontWeight:600}}>Recommended next</div>}
+              {isRec&&<div style={{fontSize:7,color:"#ffd700",marginTop:1,fontWeight:600}}>Recommended next</div>}
             </div>
           </div>;})}
-          <div style={{display:"flex",gap:3,marginTop:5,flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:3,marginTop:4,flexWrap:"wrap"}}>
             {[{l:"Eff",v:sel.ef.toFixed(2),c:sel.ef>1?"#4ade80":"#ffd700"},{l:"Scale",v:"×"+sel.effSc.toFixed(1),c:"#60a5fa"},{l:"Line",v:"+"+sel.lS,c:sel.lS>50?"#ff3333":"#60a5fa"},{l:"Next",v:sel.cheapest?Math.round(sel.cheapH)+"h":"-",c:"#ffd700"}].map((s,i)=>(
-              <div key={i} style={{fontSize:8,background:"rgba(255,255,255,0.015)",padding:"1px 4px",borderRadius:2}}><span style={{color:"#444"}}>{s.l}:</span><b style={{color:s.c}}>{s.v}</b></div>
+              <div key={i} style={{fontSize:7,background:"rgba(255,220,150,0.04)",padding:"1px 4px",borderRadius:2}}><span style={{color:"#8a7a5a"}}>{s.l}:</span><b style={{color:s.c}}>{s.v}</b></div>
             ))}
+            {sel.nL.length>0&&<span style={{fontSize:7,color:"#ff5555",fontWeight:600}}>Line: {sel.nL.map(l=>l.name+"("+l.need+")").join(", ")}</span>}
           </div>
-          {sel.nL.length>0&&<div style={{marginTop:3,fontSize:8,color:"#ff5555",fontWeight:600}}>Line: {sel.nL.map(l=>l.name+"("+l.need+")").join(", ")}</div>}
         </div>}
-        {sel&&editing&&<div style={{marginBottom:8}}><TileEditor tile={tiles.find(t=>t.id===sel.id)} onSave={saveTile} onCancel={()=>setEditing(false)} enrichTask={enrichTask} enriching={enriching} wikiData={wikiData}/></div>}
+        {sel&&editing&&<div style={{marginBottom:6}}><TileEditor tile={tiles.find(t=>t.id===sel.id)} onSave={saveTile} onCancel={()=>setEditing(false)} enrichTask={enrichTask} enriching={enriching} wikiData={wikiData}/></div>}
 
-        <div style={{fontSize:9,color:"#444",marginBottom:3,fontWeight:600,letterSpacing:2}}>PRIORITY</div>
-        <div style={{maxHeight:sel?200:340,overflowY:"auto"}}>
+        {/* Priority list — compact single-line rows, scrollable when detail is open */}
+        <div style={{fontSize:8,color:"#8a7a5a",marginBottom:2,fontWeight:600,letterSpacing:2}}>PRIORITY</div>
+        <div style={{maxHeight:sel?220:undefined,overflowY:sel?"auto":undefined}}>
           {pri.map((tile,idx)=>(
-            <div key={tile.id} onClick={()=>{setSelT(tile.id);setEditing(false);}} style={{display:"flex",alignItems:"center",gap:5,padding:"3px 5px",marginBottom:1,borderRadius:3,cursor:"pointer",background:selT===tile.id?"rgba(255,215,0,0.04)":"transparent"}}>
-              <div style={{width:15,height:15,borderRadius:2,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:900,background:idx<3?"rgba(255,51,51,0.1)":idx<7?"rgba(255,136,0,0.07)":"rgba(255,255,255,0.02)",color:idx<3?"#ff5555":idx<7?"#ff8c00":"#555"}}>{idx+1}</div>
-              <div style={{width:3,height:14,borderRadius:1,background:CC[tile.cat],flexShrink:0,opacity:0.5}}/>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:10,fontWeight:600,color:"#aaa",display:"flex",alignItems:"center",gap:3}}><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>#{tile.id} {tile.name}</span><Dots c={tile.dc}/></div>
-                <div style={{fontSize:8,color:"#444"}}>{tile.cheapest?<span>⭐ {tile.cheapest.desc} ~{Math.round(tile.cheapH)}h</span>:"Done"} · {modeLabel(tile.workMode || defaultWorkMode(tile))}{tile.lS>50&&<span style={{color:"#ff5555"}}> LINE</span>}</div>
-              </div>
-              <div style={{fontSize:11,fontWeight:900,color:tile.sm>15?"#4ade80":tile.sm>5?"#ffd700":"#555"}}>{tile.sm.toFixed(1)}</div>
+            <div key={tile.id} onClick={()=>{setSelT(tile.id);setEditing(false);}} style={{display:"flex",alignItems:"center",gap:4,padding:"2px 3px",borderRadius:2,cursor:"pointer",borderLeft:selT===tile.id?"2px solid #ffd700":"2px solid transparent",background:selT===tile.id?"rgba(255,215,0,0.05)":"transparent"}}>
+              <span style={{fontSize:7,fontWeight:900,color:idx<3?"#ff5555":idx<7?"#ff8c00":"#6a5a3a",minWidth:14,textAlign:"right",flexShrink:0}}>{idx+1}</span>
+              <div style={{width:2,height:10,borderRadius:1,background:CC[tile.cat],flexShrink:0}}/>
+              <span style={{fontSize:9,fontWeight:600,color:selT===tile.id?"#ffd700":"#b8a878",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>#{tile.id} {tile.name}</span>
+              {tile.cheapest&&<span style={{fontSize:7,color:"#6a5a3a",flexShrink:0}}>{Math.round(tile.cheapH)}h</span>}
+              {tile.lS>50&&<span style={{fontSize:6,color:"#ff5555",flexShrink:0}}>LINE</span>}
+              <span style={{fontSize:8,fontWeight:700,color:tile.sm>15?"#4ade80":tile.sm>5?"#ffd700":"#6a5a3a",flexShrink:0,minWidth:26,textAlign:"right"}}>{tile.sm.toFixed(1)}</span>
             </div>
           ))}
-        </div>
-
-        <div style={{fontSize:9,color:"#444",marginTop:8,marginBottom:3,fontWeight:600,letterSpacing:2}}>LINES</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:2}}>
-          {LINES.map((line,i)=>{const gc=line.tiles.filter(t=>met.find(m=>m.id===t)?.dc>=3).length,dn=gc===5;
-          return <div key={i} onMouseEnter={()=>setHlL(line.name)} onMouseLeave={()=>setHlL(null)} style={{padding:"2px 4px",borderRadius:2,fontSize:8,cursor:"pointer",background:dn?"rgba(74,222,128,0.05)":"rgba(255,255,255,0.008)",border:"1px solid "+(dn?"rgba(74,222,128,0.15)":"rgba(255,255,255,0.02)")}}>
-            <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:dn?"#4ade80":"#555",fontWeight:600}}>{dn?"✓":""}{line.name}</span><span style={{color:"#444"}}>{gc}/5</span></div>
-            <div style={{height:2,background:"rgba(255,255,255,0.03)",borderRadius:1,marginTop:1}}><div style={{height:"100%",borderRadius:1,width:(gc/5*100)+"%",background:dn?"#4ade80":gc>=3?"#ffd700":"#444",transition:"width 0.3s"}}/></div>
-          </div>;})}
         </div>
       </div>
     </div>
 
-    <div className="tab-shell" style={{marginTop:18,background:"rgba(255,255,255,0.012)",borderRadius:6,border:"1px solid rgba(255,255,255,0.04)",overflow:"hidden"}}>
-      <div className="tab-nav" style={{display:"flex",borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+    <div className="tab-shell" style={{marginTop:18,background:"rgba(255,220,150,0.025)",borderRadius:6,border:"1px solid rgba(255,220,150,0.09)",overflow:"hidden"}}>
+      <div className="tab-nav" style={{display:"flex",borderBottom:"1px solid rgba(255,220,150,0.09)"}}>
         {[{id:"scenarios",label:"Scenarios",desc:"B/S/G compare"},{id:"line",label:"Line Planner",desc:"Bingo probability"},{id:"online",label:"Who's Online",desc:"Active priority"},{id:"strategy",label:"Strategy",desc:"Discord directive"},{id:"compare",label:"All Teams",desc:"Side-by-side"}].map(t=>(
-          <button key={t.id} className="tab-btn" onClick={()=>setTab(t.id)} style={{cursor:"pointer",background:tab===t.id?"rgba(255,215,0,0.04)":"transparent",border:"none",borderBottom:tab===t.id?"2px solid #ffd700":"2px solid transparent",color:tab===t.id?"#ffd700":"#555",fontSize:10,fontWeight:tab===t.id?700:400}}>
-            <div>{t.label}</div><div style={{fontSize:7,color:tab===t.id?"#666":"#333",marginTop:1}}>{t.desc}</div>
+          <button key={t.id} className="tab-btn" onClick={()=>setTab(t.id)} style={{cursor:"pointer",background:tab===t.id?"rgba(255,215,0,0.06)":"transparent",border:"none",borderBottom:tab===t.id?"2px solid #ffd700":"2px solid transparent",color:tab===t.id?"#ffd700":"#7a6a4a",fontSize:10,fontWeight:tab===t.id?700:400}}>
+            <div>{t.label}</div><div style={{fontSize:7,color:tab===t.id?"#8a7a5a":"#5a4a30",marginTop:1}}>{t.desc}</div>
           </button>
         ))}
       </div>

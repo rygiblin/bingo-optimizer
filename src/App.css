@@ -1,10 +1,10 @@
 :root {
-  --bg-main: #0b0e14;
-  --bg-elev-1: #111520;
-  --bg-elev-2: #151a24;
-  --text-main: #d3d8e1;
-  --text-muted: #8b93a7;
-  --border-soft: rgba(255, 255, 255, 0.08);
+  --bg-main: #1e1b12;
+  --bg-elev-1: #28241a;
+  --bg-elev-2: #332e22;
+  --text-main: #ede8d4;
+  --text-muted: #b0a888;
+  --border-soft: rgba(255, 220, 150, 0.10);
 }
 
 .app-root {
@@ -23,7 +23,8 @@
 }
 
 .app-main-grid {
-  grid-template-columns: minmax(300px, 420px) minmax(300px, 1fr);
+  grid-template-columns: minmax(360px, 520px) minmax(280px, 400px);
+  justify-content: center;
 }
 
 .board-pane {
@@ -32,11 +33,11 @@
 
 .board-grid {
   width: 100%;
-  max-width: 420px;
+  max-width: 520px;
 }
 
 .details-pane {
-  max-width: 560px;
+  max-width: 400px;
 }
 
 .kpi-row {
@@ -54,7 +55,7 @@
 }
 
 .tab-content {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0));
+  background: linear-gradient(180deg, rgba(255, 220, 150, 0.015), rgba(255, 220, 150, 0));
 }
 
 @media (max-width: 1100px) {
@@ -63,7 +64,7 @@
   }
 
   .board-grid {
-    max-width: 560px;
+    max-width: 600px;
   }
 
   .details-pane {
