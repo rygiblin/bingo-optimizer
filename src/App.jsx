@@ -173,32 +173,114 @@ function teamCategoryHours(players,cat,scenario='expected') {
 }
 
 const INIT_TILES=[
-  {id:1,name:"COX KC",tasks:[{id:"1a",desc:"100 KC",type:"kc",estHours:33,notes:"~3 KC/hr"},{id:"1b",desc:"150 KC",type:"kc",estHours:17,notes:"+50 KC"},{id:"1c",desc:"200 KC",type:"kc",estHours:17,notes:"+50 KC"}],cat:"raids",notes:"Regular COX"},
+  {id:1,name:"COX KC",tasks:[{id:"1a",desc:"100 KC",type:"raid",estHours:33,notes:"~3 KC/hr"},{id:"1b",desc:"150 KC",type:"raid",estHours:17,notes:"+50 KC"},{id:"1c",desc:"200 KC",type:"raid",estHours:17,notes:"+50 KC"}],cat:"raids",notes:"Regular COX"},
   {id:2,name:"Slayer Unique",tasks:[{id:"2a",desc:"8 Slayer Pts",type:"points",estHours:20,notes:"Point table"},{id:"2b",desc:"16 Slayer Pts",type:"points",estHours:25,notes:"Cumulative"},{id:"2c",desc:"24 Slayer Pts",type:"points",estHours:30,notes:"Cumulative"}],cat:"slayer",notes:"Slayer boss uniques"},
   {id:3,name:"Ahoy Sailor!",tasks:[{id:"3a",desc:"3x Unique Salvage",type:"drop",estHours:33,notes:"~270/hr"},{id:"3b",desc:"Boat Paint/Pet",type:"drop",estHours:30,notes:"Paints"},{id:"3c",desc:"Rare Sailing Misc",type:"drop",estHours:40,notes:"Echo pearl etc"}],cat:"skilling",notes:"NO PRE-STACKING"},
-  {id:4,name:"Ironman Pun",tasks:[{id:"4a",desc:"CG 2x armor/enh",type:"drop",estHours:16.7,notes:"CG"},{id:"4b",desc:"8 Moons Uniques",type:"drop",estHours:10.9,notes:"14kph"},{id:"4c",desc:"Full Barrows Set",type:"kc",estHours:25,notes:"12/hr"}],cat:"pvm",notes:"CG+Moons+Barrows"},
+  {id:4,name:"Ironman Pun",tasks:[{id:"4a",desc:"CG 2x armor/enh",type:"drop",estHours:16.7,notes:"CG"},{id:"4b",desc:"8 Moons Uniques",type:"drop",estHours:10.9,notes:"14kph"},{id:"4c",desc:"Full Barrows Set",type:"solokc",estHours:25,notes:"12/hr"}],cat:"pvm",notes:"CG+Moons+Barrows"},
   {id:5,name:"Glow-ee Hole",tasks:[{id:"5a",desc:"1 Doom Unique",type:"drop",estHours:8,notes:"~8h"},{id:"5b",desc:"3 Doom Uniques",type:"drop",estHours:16,notes:"Cumul"},{id:"5c",desc:"5 Doom Uniques",type:"drop",estHours:16,notes:"Pet counts"}],cat:"pvm",notes:"~8h per unique"},
-  {id:6,name:"Icy Adventure",tasks:[{id:"6a",desc:"600 Amoxliatl KC",type:"kc",estHours:10,notes:"KC"},{id:"6b",desc:"2x Venator Shards",type:"drop",estHours:10,notes:"Shards"},{id:"6c",desc:"25 Dragon Metal",type:"drop",estHours:10,notes:"2.5/hr"}],cat:"slayer",notes:"2.5 dragon metal/hr"},
+  {id:6,name:"Icy Adventure",tasks:[{id:"6a",desc:"600 Amoxliatl KC",type:"solokc",estHours:10,notes:"KC"},{id:"6b",desc:"2x Venator Shards",type:"drop",estHours:10,notes:"Shards"},{id:"6c",desc:"25 Dragon Metal",type:"drop",estHours:10,notes:"2.5/hr"}],cat:"slayer",notes:"2.5 dragon metal/hr"},
   {id:7,name:"COX 1",tasks:[{id:"7a",desc:"3x Dex/Arcane",type:"drop",estHours:45,notes:"Purples"},{id:"7b",desc:"Ancy/TBOW",type:"drop",estHours:62.9,notes:"Mega-rare"},{id:"7c",desc:"CM Kit/Dust/Pet",type:"drop",estHours:37,notes:"CM"}],cat:"raids",notes:"High variance"},
-  {id:8,name:"Slayer LvlUp",tasks:[{id:"8a",desc:"1m Slayer XP",type:"kc",estHours:10,notes:"100k/hr"},{id:"8b",desc:"3m Slayer XP",type:"kc",estHours:20,notes:"Cumul"},{id:"8c",desc:"5m Slayer XP",type:"kc",estHours:20,notes:"Cumul"}],cat:"slayer",notes:"Synergizes w/ unique"},
+  {id:8,name:"Slayer LvlUp",tasks:[{id:"8a",desc:"1m Slayer XP",type:"xp",estHours:10,notes:"100k/hr"},{id:"8b",desc:"3m Slayer XP",type:"xp",estHours:20,notes:"Cumul"},{id:"8c",desc:"5m Slayer XP",type:"xp",estHours:20,notes:"Cumul"}],cat:"slayer",notes:"Synergizes w/ unique"},
   {id:9,name:"GWD 1",tasks:[{id:"9a",desc:"BCP",type:"drop",estHours:13.2,notes:"1/381"},{id:"9b",desc:"Arma Helm",type:"drop",estHours:13.2,notes:"1/381"},{id:"9c",desc:"Full Godsword",type:"drop",estHours:0,notes:"Passive"}],cat:"pvm",notes:"Godsword passive"},
-  {id:10,name:"TOA KC",tasks:[{id:"10a",desc:"100 KC",type:"kc",estHours:33,notes:"3 KC/hr"},{id:"10b",desc:"150 KC",type:"kc",estHours:17,notes:"+50"},{id:"10c",desc:"200 KC",type:"kc",estHours:17,notes:"+50"}],cat:"raids",notes:"3-man min"},
+  {id:10,name:"TOA KC",tasks:[{id:"10a",desc:"100 KC",type:"raid",estHours:33,notes:"3 KC/hr"},{id:"10b",desc:"150 KC",type:"raid",estHours:17,notes:"+50"},{id:"10c",desc:"200 KC",type:"raid",estHours:17,notes:"+50"}],cat:"raids",notes:"3-man min"},
   {id:11,name:"TOA 1",tasks:[{id:"11a",desc:"2x Lightbearer",type:"drop",estHours:30,notes:"Purple"},{id:"11b",desc:"2x Fang/Shadow",type:"drop",estHours:50,notes:"Weapons"},{id:"11c",desc:"Masori/Ward/Pet",type:"drop",estHours:80,notes:"Rarest"}],cat:"raids",notes:"Dupes suck"},
   {id:12,name:"Slayer Parts",tasks:[{id:"12a",desc:"Gryphon Folly+Horn",type:"drop",estHours:25,notes:"1/400+1/1k"},{id:"12b",desc:"3x Brimstone",type:"drop",estHours:21,notes:"Dupes ok"},{id:"12c",desc:"2 Boss Jars",type:"drop",estHours:30,notes:"No dupes"}],cat:"slayer",notes:"Mixed slayer"},
   {id:13,name:"PVM Daily",tasks:[{id:"13a",desc:"Challenge 1",type:"challenge",estHours:2,notes:"Discord"},{id:"13b",desc:"Challenge 2",type:"challenge",estHours:2,notes:"Discord"},{id:"13c",desc:"Challenge 3",type:"challenge",estHours:2,notes:"Discord"}],cat:"challenge",notes:"Dailies"},
   {id:14,name:"Scaly Surprise",tasks:[{id:"14a",desc:"Tanzanite Fang",type:"drop",estHours:12.8,notes:"1/512"},{id:"14b",desc:"Vorkath Unique",type:"drop",estHours:19.2,notes:"Any"},{id:"14c",desc:"Corp Sigil/DWH",type:"drop",estHours:20,notes:"Either"}],cat:"pvm",notes:"Multi-boss"},
   {id:15,name:"GWD 2",tasks:[{id:"15a",desc:"Staff of Dead",type:"drop",estHours:19.6,notes:"K'ril"},{id:"15b",desc:"Arma Crossbow",type:"drop",estHours:18.9,notes:"Kree"},{id:"15c",desc:"3x any Hilt",type:"drop",estHours:0,notes:"Passive"}],cat:"pvm",notes:"Passive hilts"},
-  {id:16,name:"Nex",tasks:[{id:"16a",desc:"60 Nihil Shards",type:"kc",estHours:8.3,notes:"7.25/hr"},{id:"16b",desc:"Nex Unique",type:"drop",estHours:14.3,notes:"1/43"},{id:"16c",desc:"2 Nex Uniques",type:"drop",estHours:14.3,notes:"2nd"}],cat:"pvm",notes:"Group"},
-  {id:17,name:"AFK TILE",tasks:[{id:"17a",desc:"1.75m Mining/Pet",type:"kc",estHours:20,notes:"AFK"},{id:"17b",desc:"2m WC/Pet",type:"kc",estHours:20,notes:"AFK"},{id:"17c",desc:"3m Hunter/Pet",type:"kc",estHours:20,notes:"No prestack"}],cat:"skilling",notes:"No 2x accounts"},
-  {id:18,name:"TOB KC",tasks:[{id:"18a",desc:"100 KC",type:"kc",estHours:33,notes:"3/hr"},{id:"18b",desc:"150 KC",type:"kc",estHours:17,notes:"+50"},{id:"18c",desc:"200 KC",type:"kc",estHours:17,notes:"+50"}],cat:"raids",notes:"1 KC per"},
-  {id:19,name:"Skillers Unite!",tasks:[{id:"19a",desc:"Tench/200 Pearls",type:"drop",estHours:12.5,notes:"Aerial"},{id:"19b",desc:"1000 Vale Searches",type:"kc",estHours:20,notes:"Totems"},{id:"19c",desc:"Tome/Pet/Harpoon",type:"drop",estHours:20,notes:"No Wyrms"}],cat:"skilling",notes:"Mixed"},
-  {id:20,name:"Yama",tasks:[{id:"20a",desc:"500 KC",type:"kc",estHours:12.5,notes:"40KPH duo"},{id:"20b",desc:"Oathplate Piece",type:"drop",estHours:19.6,notes:"1/51"},{id:"20c",desc:"Horn/Pet",type:"drop",estHours:30.3,notes:"Rare"}],cat:"pvm",notes:"Pet contracts ok"},
+  {id:16,name:"Nex",tasks:[{id:"16a",desc:"60 Nihil Shards",type:"masskc",estHours:8.3,notes:"7.25/hr"},{id:"16b",desc:"Nex Unique",type:"drop",estHours:14.3,notes:"1/43"},{id:"16c",desc:"2 Nex Uniques",type:"drop",estHours:14.3,notes:"2nd"}],cat:"pvm",notes:"Group"},
+  {id:17,name:"AFK TILE",tasks:[{id:"17a",desc:"1.75m Mining/Pet",type:"xp",estHours:20,notes:"AFK"},{id:"17b",desc:"2m WC/Pet",type:"xp",estHours:20,notes:"AFK"},{id:"17c",desc:"3m Hunter/Pet",type:"xp",estHours:20,notes:"No prestack"}],cat:"skilling",notes:"No 2x accounts"},
+  {id:18,name:"TOB KC",tasks:[{id:"18a",desc:"100 KC",type:"raid",estHours:33,notes:"3/hr"},{id:"18b",desc:"150 KC",type:"raid",estHours:17,notes:"+50"},{id:"18c",desc:"200 KC",type:"raid",estHours:17,notes:"+50"}],cat:"raids",notes:"1 KC per"},
+  {id:19,name:"Skillers Unite!",tasks:[{id:"19a",desc:"Tench/200 Pearls",type:"drop",estHours:12.5,notes:"Aerial"},{id:"19b",desc:"1000 Vale Searches",type:"solokc",estHours:20,notes:"Totems"},{id:"19c",desc:"Tome/Pet/Harpoon",type:"drop",estHours:20,notes:"No Wyrms"}],cat:"skilling",notes:"Mixed"},
+  {id:20,name:"Yama",tasks:[{id:"20a",desc:"500 KC",type:"masskc",estHours:12.5,notes:"40KPH duo"},{id:"20b",desc:"Oathplate Piece",type:"drop",estHours:19.6,notes:"1/51"},{id:"20c",desc:"Horn/Pet",type:"drop",estHours:30.3,notes:"Rare"}],cat:"pvm",notes:"Pet contracts ok"},
   {id:21,name:"Colo",tasks:[{id:"21a",desc:"3 Echo Crystals",type:"drop",estHours:12.5,notes:"Crystals"},{id:"21b",desc:"3x Sunfire Full",type:"drop",estHours:10,notes:"Fanatic"},{id:"21c",desc:"2x Onyxites/Ralos",type:"drop",estHours:17.1,notes:"Rare"}],cat:"pvm",notes:"Colosseum"},
-  {id:22,name:"DT2",tasks:[{id:"22a",desc:"10 Awakener Orbs",type:"kc",estHours:25,notes:"Orbs"},{id:"22b",desc:"4 Ring Rolls",type:"drop",estHours:29.6,notes:"11.5h/roll"},{id:"22c",desc:"3 Axe Pcs/Virtus",type:"drop",estHours:55,notes:"Rare"}],cat:"pvm",notes:"Long tile"},
-  {id:23,name:"MASS MODE",tasks:[{id:"23a",desc:"150 NM KC",type:"kc",estHours:12.5,notes:"12/hr 5man"},{id:"23b",desc:"1000 Callisto",type:"kc",estHours:20,notes:"Mass"},{id:"23c",desc:"150 Corp KC",type:"kc",estHours:15,notes:"10/hr w/8"}],cat:"mass",notes:"Great for team"},
+  {id:22,name:"DT2",tasks:[{id:"22a",desc:"10 Awakener Orbs",type:"solokc",estHours:25,notes:"Orbs"},{id:"22b",desc:"4 Ring Rolls",type:"drop",estHours:29.6,notes:"11.5h/roll"},{id:"22c",desc:"3 Axe Pcs/Virtus",type:"drop",estHours:55,notes:"Rare"}],cat:"pvm",notes:"Long tile"},
+  {id:23,name:"MASS MODE",tasks:[{id:"23a",desc:"150 NM KC",type:"masskc",estHours:12.5,notes:"12/hr 5man"},{id:"23b",desc:"1000 Callisto",type:"masskc",estHours:20,notes:"Mass"},{id:"23c",desc:"150 Corp KC",type:"masskc",estHours:15,notes:"10/hr w/8"}],cat:"mass",notes:"Great for team"},
   {id:24,name:"TOB 1",tasks:[{id:"24a",desc:"2x Avernic",type:"drop",estHours:43.5,notes:"Purple"},{id:"24b",desc:"3x Justi/Scythe",type:"drop",estHours:83.3,notes:"Rare"},{id:"24c",desc:"HMT Kit/Dust/Pet",type:"drop",estHours:49,notes:"HM"}],cat:"raids",notes:"Longest tile"},
   {id:25,name:"Leftovers",tasks:[{id:"25a",desc:"Tormented Synapse",type:"drop",estHours:9.1,notes:"Sire/GG"},{id:"25b",desc:"Phosani Unique",type:"drop",estHours:15.1,notes:"NOT reg NM"},{id:"25c",desc:"3x Zenyte Shards",type:"drop",estHours:13,notes:"Gorillas"}],cat:"pvm",notes:"Good money+xp"}
 ];
+
+const TILE_STATE_KEY = "bingo:tiles:v1";
+const DONE_STATE_KEY = "bingo:done:v1";
+
+function defaultWorkMode(tile) {
+  if ((tile.tasks || []).some(t => t.type === "raid")) return "raid";
+  if ((tile.tasks || []).some(t => t.type === "masskc")) return "mass";
+  if (tile.cat === "raids") return "raid";
+  if (tile.cat === "mass") return "mass";
+  return "solo";
+}
+function normalizeTaskType(taskType) {
+  // Keep task type focused on estimation math; scaling is controlled at tile level via workMode.
+  if (taskType === "kc" || taskType === "solokc" || taskType === "masskc" || taskType === "raid") return "kc";
+  if (taskType === "drop" || taskType === "xp" || taskType === "points" || taskType === "challenge") return taskType;
+  return "drop";
+}
+function isDeterministicType(taskType) {
+  return normalizeTaskType(taskType) !== "drop";
+}
+function normTask(task) {
+  return {
+    ...task,
+    type: task.type || "drop",
+    estHours: Number(task.estHours) > 0 ? Number(task.estHours) : 0,
+  };
+}
+function normTile(tile) {
+  const mode = tile.workMode || defaultWorkMode(tile);
+  return {
+    ...tile,
+    workMode: mode,
+    tasks: (tile.tasks || []).map(normTask).map(t => ({ ...t, type: normalizeTaskType(t.type) })),
+  };
+}
+function normTiles(tiles) {
+  return (tiles || []).map(normTile);
+}
+function loadSavedTiles() {
+  try {
+    const raw = localStorage.getItem(TILE_STATE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length !== 25) return null;
+    return normTiles(parsed);
+  } catch {
+    return null;
+  }
+}
+function loadSavedDone() {
+  try {
+    const raw = localStorage.getItem(DONE_STATE_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+function tileScale(tile, teamSize, teamCap) {
+  const mode = tile.workMode || defaultWorkMode(tile);
+  if (mode === "solo") return 1;
+  if (mode === "raid") return Math.max(0.01, Math.min(teamSize, 5) * (teamCap.raids || 1.0));
+  if (mode === "mass") return Math.max(0.01, Math.min(teamSize, 10) * (teamCap.mass || teamCap[tile.cat] || 1.0));
+  return effectiveScale(tile.cat, teamSize, teamCap);
+}
+function modeLabel(mode) {
+  return mode === "raid" ? "RAID" : mode === "mass" ? "MASS" : "SOLO";
+}
+function modeHint(mode) {
+  if (mode === "raid") return "Raid mode: projected with up to 5-player raid scaling";
+  if (mode === "mass") return "Mass mode: projected with team-parallel scaling";
+  return "Solo mode: projected in raw hours (no team-size scaling)";
+}
+function taskTypeLabel(taskType) {
+  const t = normalizeTaskType(taskType);
+  if (t === "kc") return "KC";
+  if (t === "xp") return "XP";
+  if (t === "points") return "Points";
+  if (t === "challenge") return "Challenge";
+  return "Drop";
+}
 
 // ─── SCORING SYSTEM ─────────────────────────────────────────────────────────
 const TASK_POINTS = 3;        // Points per task completed
@@ -245,25 +327,44 @@ Respond ONLY with a JSON object, no markdown, no explanation:
 
 // ...existing code...
 async function callEnrichAPI(tileName, tileNotes, tileCategory, task) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
-  try {
-    const res = await fetch('/api/enrich', {
-      method: 'POST',
-      signal: controller.signal,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tileName, tileNotes, tileCategory, task })
-    });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '');
-      throw new Error(`Proxy error ${res.status}: ${txt}`);
-    }
-    const j = await res.json().catch(() => ({}));
-    // proxy returns { ok: true, result: {...} }
-    return j.result || j;
-  } finally {
-    clearTimeout(timeout);
+  const body = JSON.stringify({ tileName, tileNotes, tileCategory, task });
+  const endpoints = ['/api/enrich'];
+  // Frontend dev server on :5173 doesn't host /api, so try common local backends.
+  if (typeof window !== 'undefined' && window.location?.port === '5173') {
+    endpoints.push('http://localhost:3001/api/enrich'); // legacy express proxy with CORS for 5173
+    endpoints.push('http://localhost:3000/api/enrich'); // vercel dev (usually same-origin if opened on :3000)
   }
+
+  let lastErr = null;
+  for (const endpoint of endpoints) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        lastErr = new Error(`Proxy error ${res.status} from ${endpoint}: ${txt}`);
+        continue;
+      }
+      const j = await res.json().catch(() => ({}));
+      // proxy returns { ok: true, result: {...} }
+      return j.result || j;
+    } catch (e) {
+      lastErr = e;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  throw new Error(
+    `Enrich API unavailable. Tried: ${endpoints.join(', ')}. ` +
+    `Start 'vercel dev' and open http://localhost:3000, or run the Express proxy on :3001. ` +
+    `Last error: ${lastErr?.message || 'unknown'}`
+  );
 }
 
 function useWikiData(tiles, setTiles) {
@@ -282,20 +383,12 @@ function useWikiData(tiles, setTiles) {
         if (val) loaded[key.replace('wiki:', '')] = JSON.parse(val);
       } catch {}
     }
-    if (Object.keys(loaded).length > 0) {
-      setWikiData(loaded);
-      setTiles(prev => prev.map(tile => ({
-        ...tile,
-        tasks: tile.tasks.map(task => {
-          const d = loaded[task.id];
-          if (!d) return task;
-          return {...task, estHours: d.estHours, wikiEnriched: true, wikiConfidence: d.confidence, wikiNotes: d.wikiNotes};
-        })
-      })));
-    }
+    if (Object.keys(loaded).length > 0) setWikiData(loaded);
   }, []);
 
-  const enrichTask = async (tile, task) => {
+  const enrichTask = async (tile, task, opts = {}) => {
+    const applyToTiles = !!opts.applyToTiles;
+    const persistCache = opts.persistCache !== false;
     const taskId = task.id;
     setEnriching(p => ({...p, [taskId]: true}));
     try {
@@ -317,19 +410,23 @@ function useWikiData(tiles, setTiles) {
         wikiNotes: result.wikiNotes || "",
         enrichedAt: Date.now()
       };
-      // Persist enriched data so it survives page refresh
-      localStorage.setItem(`wiki:${taskId}`, JSON.stringify(enriched));
-      setWikiData(p => ({...p, [taskId]: enriched}));
-      setTiles(prev => prev.map(t => t.id !== tile.id ? t : {
-        ...t,
-        tasks: t.tasks.map(tk => tk.id !== taskId ? tk : {
-          ...tk,
-          estHours: enriched.estHours,
-          wikiEnriched: true,
-          wikiConfidence: enriched.confidence,
-          wikiNotes: enriched.wikiNotes
-        })
-      }));
+      if (persistCache) {
+        // Persist enrichment cache only when requested (editor draft enrich should remain unsaved)
+        localStorage.setItem(`wiki:${taskId}`, JSON.stringify(enriched));
+        setWikiData(p => ({...p, [taskId]: enriched}));
+      }
+      if (applyToTiles) {
+        setTiles(prev => prev.map(t => t.id !== tile.id ? t : {
+          ...t,
+          tasks: t.tasks.map(tk => tk.id !== taskId ? tk : {
+            ...tk,
+            estHours: enriched.estHours,
+            wikiEnriched: true,
+            wikiConfidence: enriched.confidence,
+            wikiNotes: enriched.wikiNotes
+          })
+        }));
+      }
       return enriched;
     } catch(e) {
       console.error('Enrich failed', taskId, e);
@@ -348,7 +445,7 @@ function useWikiData(tiles, setTiles) {
     const skipped = [];
     for (let i = 0; i < needsEnrich.length; i++) {
       const {tile, task} = needsEnrich[i];
-      const result = await enrichTask(tile, task);
+      const result = await enrichTask(tile, task, { applyToTiles: true });
       if (!result) {
         failed++;
         skipped.push(`${tile.name} / ${task.desc}`);
@@ -432,12 +529,12 @@ function getMarginalPoints(tileId, currentTasksOnTile, tasksToAdd, allTileTaskCo
   return taskPts + bonusGain;
 }
 
-function pG(tile,hours,effSc){const eh=hours*effSc,so=[...tile.tasks].sort((a,b)=>a.estHours-b.estHours);let cum=0,p=1;for(const t of so){const r=Math.max(0,eh-cum);if(t.type==="kc"||t.type==="challenge"||t.type==="points"){p*=r>=t.estHours?1:Math.min(1,r/t.estHours);}else{if(t.estHours>0)p*=1-Math.exp(-(1/t.estHours)*r);}cum+=t.estHours;}return Math.min(1,p);}
+function pG(tile,hours,effSc){const eh=hours*effSc,so=[...tile.tasks].sort((a,b)=>a.estHours-b.estHours);let cum=0,p=1;for(const t of so){const r=Math.max(0,eh-cum);if(isDeterministicType(t.type)){p*=r>=t.estHours?1:Math.min(1,r/t.estHours);}else{if(t.estHours>0)p*=1-Math.exp(-(1/t.estHours)*r);}cum+=t.estHours;}return Math.min(1,p);}
 
 function Dots({c}){return <div style={{display:"flex",gap:2,justifyContent:"center"}}>{[0,1,2].map(i=><div key={i} style={{width:6,height:6,borderRadius:"50%",background:c>i?(i===0?"#cd7f32":i===1?"#c0c0c0":"#ffd700"):"rgba(255,255,255,0.07)"}}/>)}</div>;}
 
 function VBar({task}){
-  if(task.type!=="drop")return <div style={{fontSize:9,color:"#555",marginTop:2}}>Fixed: <b style={{color:"#999"}}>{task.estHours.toFixed(1)}h</b></div>;
+  if(isDeterministicType(task.type))return <div style={{fontSize:9,color:"#555",marginTop:2}}>Fixed: <b style={{color:"#999"}}>{task.estHours.toFixed(1)}h</b></div>;
   const l=task.estHours*0.35,d=task.estHours*2,sd=task.estHours*3,m=task.estHours*0.7;
   return <div style={{marginTop:2}}><div style={{display:"flex",gap:6,fontSize:8,color:"#555",flexWrap:"wrap"}}><span>Lucky:<b style={{color:"#4ade80"}}>{l.toFixed(1)}h</b></span><span>Exp:<b style={{color:"#ffd700"}}>{task.estHours.toFixed(1)}h</b></span><span>Dry:<b style={{color:"#ff8c00"}}>{d.toFixed(1)}h</b></span></div><div style={{position:"relative",height:4,background:"rgba(255,255,255,0.04)",borderRadius:2,marginTop:2,overflow:"hidden"}}><div style={{position:"absolute",left:(l/sd*100)+"%",width:((d-l)/sd*100)+"%",height:"100%",background:"rgba(255,215,0,0.2)"}}/><div style={{position:"absolute",left:(m/sd*100)+"%",width:2,height:"100%",background:"#ffd700"}}/></div></div>;
 }
@@ -445,7 +542,8 @@ function VBar({task}){
 function TileEditor({tile, onSave, onCancel, enrichTask, enriching, wikiData}){
   const[name,setName]=useState(tile.name);
   const[notes,setNotes]=useState(tile.notes);
-  const[tasks,setTasks]=useState(tile.tasks.map(t=>({...t})));
+  const[workMode,setWorkMode]=useState(tile.workMode || defaultWorkMode(tile));
+  const[tasks,setTasks]=useState(tile.tasks.map(t=>({...t,type:normalizeTaskType(t.type)})));
   const up=(i,f,v)=>setTasks(p=>p.map((t,j)=>j===i?{...t,[f]:f==="estHours"?parseFloat(v)||0:v}:t));
 
   const handleEnrich = async (i, forceRefresh=false) => {
@@ -454,7 +552,7 @@ function TileEditor({tile, onSave, onCancel, enrichTask, enriching, wikiData}){
       // Clear cached entry so the API call runs fresh
       localStorage.removeItem(`wiki:${task.id}`);
     }
-    const result = await enrichTask(tile, task);
+    const result = await enrichTask(tile, task, { persistCache: false });
     if (result) {
       setTasks(p => p.map((t,j) => j===i ? {
         ...t,
@@ -474,12 +572,20 @@ function TileEditor({tile, onSave, onCancel, enrichTask, enriching, wikiData}){
     <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,alignItems:"center"}}>
       <span style={{fontSize:12,fontWeight:700,color:"#60a5fa"}}>Edit #{tile.id}</span>
       <div style={{display:"flex",gap:4}}>
-        <button onClick={()=>onSave({...tile,name,notes,tasks})} style={btn("rgba(74,222,128,0.15)","#4ade80","rgba(74,222,128,0.3)")}>Save</button>
+        <button onClick={()=>onSave({...tile,name,notes,workMode,tasks:tasks.map(t=>({...t,type:normalizeTaskType(t.type)}))})} style={btn("rgba(74,222,128,0.15)","#4ade80","rgba(74,222,128,0.3)")}>Save</button>
         <button onClick={onCancel} style={btn("rgba(255,255,255,0.05)","#888","rgba(255,255,255,0.1)")}>Cancel</button>
       </div>
     </div>
     <div style={{marginBottom:6}}><div style={{fontSize:8,color:"#555",marginBottom:2}}>Name</div><input value={name} onChange={e=>setName(e.target.value)} style={ins}/></div>
     <div style={{marginBottom:8}}><div style={{fontSize:8,color:"#555",marginBottom:2}}>Notes</div><input value={notes} onChange={e=>setNotes(e.target.value)} style={ins}/></div>
+    <div style={{marginBottom:8}}>
+      <div style={{fontSize:8,color:"#555",marginBottom:2}}>Scale mode</div>
+      <select value={workMode} onChange={e=>setWorkMode(e.target.value)} style={ins}>
+        <option value="solo">Solo (no team scaling)</option>
+        <option value="mass">Mass (team parallel)</option>
+        <option value="raid">Raid (up to 5 players)</option>
+      </select>
+    </div>
     {tasks.map((task,i)=>{
       const wd = wikiData[task.id];
       const isEnriching = enriching[task.id];
@@ -498,7 +604,7 @@ function TileEditor({tile, onSave, onCancel, enrichTask, enriching, wikiData}){
         <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:4}}>
           <div><div style={{fontSize:7,color:"#444"}}>Desc</div><input value={task.desc} onChange={e=>up(i,"desc",e.target.value)} style={ins}/></div>
           <div><div style={{fontSize:7,color:"#444",display:"flex",justifyContent:"space-between"}}><span>Hours</span>{wd&&<span style={{color:confColor(wd.confidence)}}>{wd.estHours.toFixed(1)}h</span>}</div><input type="number" step="0.1" value={task.estHours} onChange={e=>up(i,"estHours",e.target.value)} style={{...ins,color:task.wikiEnriched?"#60a5fa":"#ffd700"}}/></div>
-          <div><div style={{fontSize:7,color:"#444"}}>Type</div><select value={task.type} onChange={e=>up(i,"type",e.target.value)} style={ins}><option value="drop">Drop</option><option value="kc">KC</option><option value="points">Pts</option><option value="challenge">Challenge</option></select></div>
+          <div><div style={{fontSize:7,color:"#444"}}>Type</div><select value={normalizeTaskType(task.type)} onChange={e=>up(i,"type",e.target.value)} style={ins}><option value="drop">Drop</option><option value="kc">KC</option><option value="xp">XP</option><option value="points">Points</option><option value="challenge">Challenge</option></select></div>
         </div>
         {wd && <div style={{marginTop:3,fontSize:7,color:"#444",fontStyle:"italic",lineHeight:1.3}}>
           {wd.kcPerHour&&<span style={{marginRight:6}}>⚔️ {wd.kcPerHour}/hr</span>}
@@ -631,7 +737,7 @@ function Scenarios({done,tiles,teamPlayers,teamCap}){
     
     const sc = calculateScore(scenDone, tiles);
     let th = 0;
-    Object.entries(s.medals).forEach(([tid,tLv])=>{const id=+tid,cur=actMed[id]||0;if(tLv<=cur)return;const tile=tiles.find(t=>t.id===id);if(!tile)return;const cd=new Set(tile.tasks.filter(tk=>done.has(tk.id)).map(tk=>tk.id));const rm=remS(tile,cd);const need=tLv-cur;const eff=effectiveScale(tile.cat,teamPlayers.length,teamCap);for(let j=0;j<need&&j<rm.length;j++)th+=rm[j].estHours/eff;});
+    Object.entries(s.medals).forEach(([tid,tLv])=>{const id=+tid,cur=actMed[id]||0;if(tLv<=cur)return;const tile=tiles.find(t=>t.id===id);if(!tile)return;const cd=new Set(tile.tasks.filter(tk=>done.has(tk.id)).map(tk=>tk.id));const rm=remS(tile,cd);const need=tLv-cur;const eff=tileScale(tile,teamPlayers.length,teamCap);for(let j=0;j<need&&j<rm.length;j++)th+=rm[j].estHours/eff;});
     return{...s,...sc,th,fF:th<=tF,fE:th<=tE};
   });
   const maxPts=Math.max(...results.map(r=>r.total),1);
@@ -705,7 +811,7 @@ function pGTarget(tile, targetMedal, doneTasks, hours, effSc) {
   let cum = 0, p = 1;
   for (const t of chosen) {
     const r = Math.max(0, eh - cum);
-    if (t.type === "kc" || t.type === "challenge" || t.type === "points") {
+    if (isDeterministicType(t.type)) {
       p *= r >= t.estHours ? 1 : Math.min(1, r / t.estHours);
     } else {
       if (t.estHours > 0) p *= 1 - Math.exp(-(1/t.estHours) * r);
@@ -752,7 +858,20 @@ function LinePlanner({done, tiles, teamPlayers, teamCap}) {
     const m = {};
     tiles.forEach(t => {
       const assigned = tileAssignments[t.id];
-      m[t.id] = (assigned > 0) ? Math.max(assigned * (teamCap[t.cat] || 1.0), 0.01) : 1;
+      const mode = t.workMode || defaultWorkMode(t);
+      if (mode === "solo") {
+        m[t.id] = 1;
+        return;
+      }
+      if (!(assigned > 0)) {
+        m[t.id] = 1;
+        return;
+      }
+      if (mode === "raid") {
+        m[t.id] = Math.max(Math.min(assigned, 5) * (teamCap.raids || 1.0), 0.01);
+        return;
+      }
+      m[t.id] = Math.max(Math.min(assigned, 10) * (teamCap.mass || teamCap[t.cat] || 1.0), 0.01);
     });
     return m;
   }, [tiles, tileAssignments, teamCap]);
@@ -963,6 +1082,7 @@ function LinePlanner({done, tiles, teamPlayers, teamCap}) {
     const isHl = hovTiles.has(tile.id);
     const assigned = tileAssignments[tile.id] || 0; // 0 = unassigned
     const isAssigned = assigned > 0;
+    const mode = tile.workMode || defaultWorkMode(tile);
     const bg = count>=3?"rgba(255,215,0,0.10)":count>=2?"rgba(192,192,192,0.08)":count>=1?"rgba(205,127,50,0.07)":"rgba(255,255,255,0.015)";
     const bc = isHl?"rgba(96,165,250,0.6)":count>=3?"rgba(255,215,0,0.2)":"rgba(255,255,255,0.04)";
     const bw = isHl ? "2px" : "1px";
@@ -970,13 +1090,18 @@ function LinePlanner({done, tiles, teamPlayers, teamCap}) {
     const nextH = count < 3 ? tileHoursForTarget(tile, count+1, tileDoneSets[tile.id], tileWarRoomEffSc[tile.id]) : 0;
     const lpLbl = lp.gold?"G":lp.silver?"S":lp.bronze?"B":null;
     const lpCol = lp.gold?"#ffd700":lp.silver?"#c0c0c0":"#cd7f32";
-    const mColor = count===0?"#cd7f32":count===1?"#c0c0c0":"#ffd700";
-    const mBg = count===0?"rgba(205,127,50,0.15)":count===1?"rgba(192,192,192,0.12)":"rgba(255,215,0,0.12)";
-    const mBorder = count===0?"rgba(205,127,50,0.35)":count===1?"rgba(192,192,192,0.3)":"rgba(255,215,0,0.3)";
-    const mLabel = count===0?"Bronze":count===1?"Silver":"Gold";
+    const scaleTagColor = isAssigned ? "#60a5fa" : "#888";
+    const scaleTagBg = isAssigned ? "rgba(96,165,250,0.15)" : "rgba(255,255,255,0.08)";
+    const scaleTagBorder = isAssigned ? "rgba(96,165,250,0.35)" : "rgba(255,255,255,0.22)";
     const btnStyle = {fontSize:8,fontWeight:700,width:11,height:11,borderRadius:2,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.05)",color:"#888",cursor:"pointer",lineHeight:"11px",padding:0,display:"flex",alignItems:"center",justifyContent:"center"};
+    const scaleHint = mode === "solo"
+      ? `${modeHint(mode)}`
+      : isAssigned
+        ? `${modeHint(mode)} · currently assigned ${assigned}p`
+        : `${modeHint(mode)} · unassigned tile currently shown as raw`;
     return <div style={{background:bg,border:`${bw} solid ${bc}`,borderRadius:4,padding:"4px 3px",textAlign:"center",position:"relative",transition:"border-color 0.15s,background 0.15s",opacity:isAssigned?1:0.5}}>
       <div style={{position:"absolute",top:2,left:2,width:3,height:3,borderRadius:"50%",background:CC[tile.cat]}}/>
+      <div title={modeHint(mode)} style={{position:"absolute",top:1,left:7,fontSize:5,color:"#8ab4f8",fontWeight:700}}>{modeLabel(mode)}</div>
       {lpLbl && <div style={{position:"absolute",top:1,right:2,fontSize:6,color:lpCol,fontWeight:900}}>⚡{lpLbl}</div>}
       <div style={{fontSize:6,color:"#444",fontWeight:600,marginTop:2}}>#{tile.id}</div>
       <div style={{fontSize:6,fontWeight:700,color:count>=3?"#ffd700":"#777",lineHeight:1.1,margin:"2px 0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tile.name}</div>
@@ -993,8 +1118,8 @@ function LinePlanner({done, tiles, teamPlayers, teamCap}) {
         ? <div style={{fontSize:6,color:"#ffd700",fontWeight:700}}>DONE</div>
         : <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:2,marginTop:1}}>
             <span style={{fontSize:6,fontWeight:600,color:"#bbb"}}>~{Math.round(nextH)}h</span>
-            <span style={{fontSize:5,fontWeight:700,padding:"0 3px",borderRadius:2,lineHeight:"10px",color:mColor,background:mBg,border:`1px solid ${mBorder}`}}>
-              {isAssigned ? mLabel : "raw"}
+            <span title={scaleHint} style={{fontSize:5,fontWeight:700,padding:"0 3px",borderRadius:2,lineHeight:"10px",color:scaleTagColor,background:scaleTagBg,border:`1px solid ${scaleTagBorder}`}}>
+              {isAssigned ? "scaled" : "raw"}
             </span>
           </div>
       }
@@ -1051,7 +1176,7 @@ function LinePlanner({done, tiles, teamPlayers, teamCap}) {
       <span style={{color:"#888"}}>Team: <span style={{color:"#e2e8f0",fontWeight:700}}>{teamPlayers.length}p</span></span>
       <span style={{color:"#888"}}>Unassigned pool: <span style={{color:unassignedPool<0?"#f87171":"#e2e8f0",fontWeight:700}}>{unassignedPool}p</span></span>
       {assignedTileCount > 0 && <button onClick={() => setTileAssignments({})} style={{fontSize:7,color:"#666",background:"none",border:"1px solid rgba(255,255,255,0.08)",borderRadius:2,cursor:"pointer",padding:"1px 5px"}}>Clear all</button>}
-      <span style={{color:"#444",fontSize:7,marginLeft:"auto"}}>+/− assigns players per tile · row/col totals use assigned counts (⚠ = raw for unassigned tiles) · resets on refresh</span>
+      <span style={{color:"#444",fontSize:7,marginLeft:"auto"}}>+/− assigns players per tile · solo-mode tiles always stay raw · row/col totals use assigned counts (⚠ = raw for unassigned tiles) · resets on refresh</span>
     </div>
     {/* Legend */}
     <div style={{display:"flex",gap:10,marginBottom:8,fontSize:7,color:"#444",flexWrap:"wrap"}}>
@@ -1110,7 +1235,7 @@ function WhosOnline({done, tiles, teamPlayers, teamCap}) {
       const dc = tileTaskCounts[tile.id];
       const tsDone = new Set(tile.tasks.filter(tk=>done.has(tk.id)).map(tk=>tk.id));
       const rem = remS(tile, tsDone);
-      const effSc = effectiveScale(tile.cat, activePlayers.length, activeCap);
+      const effSc = tileScale(tile, activePlayers.length, activeCap);
       const eH = rem.reduce((s,t)=>s+t.estHours,0) / effSc;
       const cheapest = rem.length > 0 ? rem[0] : null;
       const cheapH = cheapest ? cheapest.estHours/effSc : Infinity;
@@ -1215,7 +1340,7 @@ function WhosOnline({done, tiles, teamPlayers, teamCap}) {
                 <span style={{fontSize:10,fontWeight:600,color:"#bbb"}}>{tile.name}</span>
                 {tile.lS>100&&<span style={{fontSize:7,color:"#ff5555",fontWeight:700}}>LINE</span>}
               </div>
-              <div style={{fontSize:7,color:"#444"}}>{CAT_LABEL[tile.cat]} · ×{tile.effSc.toFixed(1)} · {3-tile.dc} tasks left</div>
+              <div style={{fontSize:7,color:"#444"}}>{CAT_LABEL[tile.cat]} · {modeLabel(tile.workMode || defaultWorkMode(tile))} · ×{tile.effSc.toFixed(1)} · {3-tile.dc} tasks left</div>
             </div>
             <div style={{textAlign:"center"}}>
               <div style={{fontSize:10,fontWeight:700,color:"#aaa"}}>{tile.eH<1?"<1":Math.round(tile.eH)}h</div>
@@ -1251,7 +1376,7 @@ function TeamRoles({done,tiles,teamPlayers,teamCap}){
     
     return tiles.filter(t=>tileTaskCounts[t.id]<3).map(tile=>{
       const dc=tileTaskCounts[tile.id],doneTasks=new Set(tile.tasks.filter(tk=>done.has(tk.id)).map(tk=>tk.id));
-      const remaining=remS(tile,doneTasks),effSc=effectiveScale(tile.cat,teamPlayers.length,teamCap);
+      const remaining=remS(tile,doneTasks),effSc=tileScale(tile,teamPlayers.length,teamCap);
       const needCount=3-dc;let hoursToGold=0;
       for(let j=0;j<needCount&&j<remaining.length;j++)hoursToGold+=remaining[j].estHours/effSc;
       
@@ -1304,7 +1429,7 @@ function TeamRoles({done,tiles,teamPlayers,teamCap}){
           onMouseEnter={e=>e.currentTarget.style.background="rgba(255,215,0,0.03)"}
           onMouseLeave={e=>e.currentTarget.style.background=idx%2===0?"rgba(255,255,255,0.005)":"transparent"}>
           <div style={{fontSize:9,color:"#333"}}>{idx+1}</div>
-          <div><div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:5,height:5,borderRadius:1,background:CC[tile.cat],flexShrink:0}}/><span style={{fontSize:10,fontWeight:700,color:"#bbb"}}>{tile.name}</span></div><div style={{fontSize:7,color:"#333"}}>{CAT_LABEL[tile.cat]} ×{tile.effSc.toFixed(1)}</div></div>
+          <div><div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:5,height:5,borderRadius:1,background:CC[tile.cat],flexShrink:0}}/><span style={{fontSize:10,fontWeight:700,color:"#bbb"}}>{tile.name}</span></div><div style={{fontSize:7,color:"#333"}}>{CAT_LABEL[tile.cat]} · {modeLabel(tile.workMode || defaultWorkMode(tile))} · ×{tile.effSc.toFixed(1)}</div></div>
           <div style={{textAlign:"center"}}><div style={{fontSize:10,fontWeight:700,color:"#aaa"}}>{tile.hoursToGold<1?"<1":Math.round(tile.hoursToGold)}h</div><div style={{fontSize:7,color:"#333"}}>{3-tile.dc} tasks</div></div>
           <div style={{textAlign:"center"}}><div style={{fontSize:11,fontWeight:800,color:pc}}>{tile.pphFull.toFixed(2)}</div><div style={{fontSize:7,color:"#333"}}>pts/hr</div></div>
           <div style={{textAlign:"center"}}><div style={{fontSize:10,fontWeight:700,color:tile.lineVal>0?"#60a5fa":"#333"}}>{tile.lineVal>0?"+"+Math.round(tile.lineVal):"—"}</div></div>
@@ -1394,12 +1519,12 @@ function TeamCompare(){
 
 export default function App(){
   const[selectedTeam,setSelectedTeam]=useState("SoccerTheNub");
-  const[done,setDone]=useState(new Set());
+  const[done,setDone]=useState(()=>loadSavedDone());
   const[selT,setSelT]=useState(null);
   const[sort,setSort]=useState("smart");
   const[hlL,setHlL]=useState(null);
   const[tab,setTab]=useState("scenarios");
-  const[tiles,setTiles]=useState(INIT_TILES.map(t=>({...t,tasks:t.tasks.map(tk=>({...tk}))})));
+  const[tiles,setTiles]=useState(()=>loadSavedTiles() || normTiles(INIT_TILES.map(t=>({...t,tasks:t.tasks.map(tk=>({...tk}))}))));
   const[editing,setEditing]=useState(false);
 
   // Wiki enrichment enabled
@@ -1410,7 +1535,22 @@ export default function App(){
   const tSz=teamPlayers.length;
 
   const toggleDone=useCallback(taskId=>{setDone(p=>{const n=new Set(p);if(n.has(taskId))n.delete(taskId);else n.add(taskId);return n;});},[]);
-  const saveTile=useCallback(u=>{setTiles(p=>p.map(t=>t.id===u.id?u:t));setEditing(false);},[]);
+  const saveTile=useCallback(u=>{const nu=normTile(u);setTiles(p=>p.map(t=>t.id===nu.id?nu:t));setEditing(false);},[]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(TILE_STATE_KEY, JSON.stringify(tiles));
+    } catch {
+      // Ignore storage write failures (private mode / quota limits).
+    }
+  }, [tiles]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(DONE_STATE_KEY, JSON.stringify([...done]));
+    } catch {
+      // Ignore storage write failures (private mode / quota limits).
+    }
+  }, [done]);
 
   const met=useMemo(()=>{
     const tileTaskCounts = {};
@@ -1421,7 +1561,7 @@ export default function App(){
     return tiles.map(tile=>{
       const dc=tileTaskCounts[tile.id],tsDone=new Set(tile.tasks.filter(tk=>done.has(tk.id)).map(tk=>tk.id));
       const rem=remS(tile,tsDone),rH=rem.reduce((s,t)=>s+t.estHours,0);
-      const effSc=effectiveScale(tile.cat,tSz,teamCap),eH=rH/effSc;
+      const effSc=tileScale(tile,tSz,teamCap),eH=rH/effSc;
       const cheapest=rem.length>0?rem[0]:null,cheapH=cheapest?cheapest.estHours/effSc:Infinity;
       let lS=0,nL=[];
       LINES.filter(l=>l.tiles.includes(tile.id)).forEach(line=>{const og=line.tiles.filter(t=>t!==tile.id&&tileTaskCounts[t]>=3).length;if(og===4){lS+=200;nL.push({...line,need:1});}else if(og===3){lS+=30;nL.push({...line,need:2});}else if(og===2)lS+=5;});
@@ -1511,12 +1651,14 @@ export default function App(){
 
     <div style={{display:"flex",gap:10,flexWrap:"wrap",justifyContent:"center",alignItems:"flex-start"}}>
       <div style={{flexShrink:0}}>
-        <div style={{fontSize:7,color:"#333",marginBottom:4}}>Tile hours = total remaining ÷ team scale</div>
+        <div style={{fontSize:7,color:"#333",marginBottom:4}}>Task hours are raw; tile ~h is projected with scale mode + team capabilities (SOLO/RAID/MASS)</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:3,width:320}}>
           {tiles.map(tile=>{const m=met.find(t=>t.id===tile.id),rk=pri.findIndex(t=>t.id===tile.id),iS=selT===tile.id,iH=hlTiles.includes(tile.id);
+          const mode = tile.workMode || defaultWorkMode(tile);
           return <div key={tile.id} onClick={()=>{setSelT(tile.id===selT?null:tile.id);setEditing(false);}} style={{background:m.dc>=3?"rgba(255,215,0,0.07)":m.dc>=1?"rgba(205,127,50,0.04)":"rgba(255,255,255,0.01)",border:"2px solid "+(iS?"#ffd700":iH?"#60a5fa":m.dc>=3?"rgba(255,215,0,0.18)":"rgba(255,255,255,0.04)"),borderRadius:4,padding:"3px 2px",cursor:"pointer",textAlign:"center",minHeight:54,position:"relative",transition:"all 0.15s",transform:iS?"scale(1.05)":"scale(1)"}}>
             {rk>=0&&rk<5&&m.dc<3&&<div style={{position:"absolute",top:-3,right:-3,zIndex:2,width:13,height:13,borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:900,color:"#000",background:rk===0?"#ff3333":rk<3?"#ff8800":"#ffcc00"}}>{rk+1}</div>}
             <div style={{position:"absolute",top:2,left:2,width:3,height:3,borderRadius:2,background:CC[tile.cat]}}/>
+            <div title={modeHint(mode)} style={{position:"absolute",top:2,right:2,fontSize:5,color:"#8ab4f8",fontWeight:700}}>{modeLabel(mode)}</div>
             <div style={{fontSize:7,color:"#444",fontWeight:600}}>#{tile.id}</div>
             <div style={{fontSize:8,fontWeight:700,color:m.dc>=3?"#ffd700":"#888",lineHeight:1.1,margin:"1px 0 2px"}}>{tile.name}</div>
             <Dots c={m.dc}/>
@@ -1528,18 +1670,19 @@ export default function App(){
       <div style={{flex:1,minWidth:240,maxWidth:420}}>
         {sel&&!editing&&<div style={{background:"rgba(255,255,255,0.02)",borderRadius:5,border:"1px solid rgba(255,215,0,0.1)",padding:8,marginBottom:8}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
-            <div><div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:7,padding:"1px 4px",borderRadius:2,background:CC[sel.cat],color:"#fff",fontWeight:700}}>{sel.cat}</span><span style={{fontSize:13,fontWeight:800,color:"#ffd700"}}>#{sel.id} {sel.name}</span></div><p style={{fontSize:8,color:"#444",margin:"1px 0 0"}}>{sel.notes}</p></div>
+            <div><div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:7,padding:"1px 4px",borderRadius:2,background:CC[sel.cat],color:"#fff",fontWeight:700}}>{sel.cat}</span><span style={{fontSize:7,padding:"1px 4px",borderRadius:2,background:"rgba(96,165,250,0.12)",color:"#60a5fa",fontWeight:700}}>{sel.workMode || defaultWorkMode(sel)}</span><span style={{fontSize:13,fontWeight:800,color:"#ffd700"}}>#{sel.id} {sel.name}</span></div><p style={{fontSize:8,color:"#444",margin:"1px 0 0"}}>{sel.notes}</p></div>
             <button onClick={()=>setEditing(true)} style={{fontSize:8,background:"rgba(96,165,250,0.12)",color:"#60a5fa",border:"1px solid rgba(96,165,250,0.3)",borderRadius:3,padding:"2px 8px",cursor:"pointer",fontWeight:600}}>Edit</button>
           </div>
-          {sel.tasks.map((task)=>{const isDone=done.has(task.id),isRec=sel.cheapest&&sel.cheapest.id===task.id&&!isDone;
+          {sel.tasks.map((task)=>{const isDone=done.has(task.id),isRec=sel.cheapest&&sel.cheapest.id===task.id&&!isDone;const tType=normalizeTaskType(task.type);
           return <div key={task.id} style={{display:"flex",alignItems:"flex-start",gap:6,background:isDone?"rgba(74,222,128,0.04)":isRec?"rgba(255,215,0,0.04)":"rgba(255,255,255,0.005)",borderRadius:4,padding:"5px 6px",marginBottom:2,border:"1px solid "+(isDone?"rgba(74,222,128,0.12)":isRec?"rgba(255,215,0,0.15)":"rgba(255,255,255,0.02)")}}>
             <div onClick={e=>{e.stopPropagation();toggleDone(task.id);}} style={{width:16,height:16,borderRadius:3,flexShrink:0,cursor:"pointer",marginTop:1,display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid "+(isDone?"#4ade80":isRec?"#ffd700":"#333"),background:isDone?"rgba(74,222,128,0.2)":"transparent",fontSize:10,color:"#4ade80",fontWeight:900}}>{isDone?"✓":""}</div>
             <div style={{flex:1,opacity:isDone?0.5:1}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <span style={{fontSize:10,fontWeight:600,color:isDone?"#4ade80":isRec?"#ffd700":"#bbb"}}>{isRec&&<span style={{fontSize:8,marginRight:3}}>⭐</span>}{task.desc}</span>
                 <div style={{display:"flex",alignItems:"center",gap:3}}>
+                  <span style={{fontSize:6,color:"#888",background:"rgba(255,255,255,0.05)",padding:"0px 3px",borderRadius:1}}>{taskTypeLabel(tType)}</span>
                   {task.wikiEnriched&&<span style={{fontSize:6,color:task.wikiConfidence==="high"?"#4ade80":task.wikiConfidence==="medium"?"#ffd700":"#ff6b6b",background:"rgba(0,0,0,0.3)",padding:"0px 3px",borderRadius:1}}>🌐</span>}
-                  <span style={{fontSize:8,color:task.wikiEnriched?"#60a5fa":"#555"}}>{task.estHours}h</span>
+                  <span style={{fontSize:8,color:task.wikiEnriched?"#60a5fa":"#555"}}>{task.estHours}h raw</span>
                 </div>
               </div>
               <div style={{fontSize:8,color:"#444"}}>{task.notes}</div>
@@ -1565,7 +1708,7 @@ export default function App(){
               <div style={{width:3,height:14,borderRadius:1,background:CC[tile.cat],flexShrink:0,opacity:0.5}}/>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:10,fontWeight:600,color:"#aaa",display:"flex",alignItems:"center",gap:3}}><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>#{tile.id} {tile.name}</span><Dots c={tile.dc}/></div>
-                <div style={{fontSize:8,color:"#444"}}>{tile.cheapest?<span>⭐ {tile.cheapest.desc} ~{Math.round(tile.cheapH)}h</span>:"Done"}{tile.lS>50&&<span style={{color:"#ff5555"}}> LINE</span>}</div>
+                <div style={{fontSize:8,color:"#444"}}>{tile.cheapest?<span>⭐ {tile.cheapest.desc} ~{Math.round(tile.cheapH)}h</span>:"Done"} · {modeLabel(tile.workMode || defaultWorkMode(tile))}{tile.lS>50&&<span style={{color:"#ff5555"}}> LINE</span>}</div>
               </div>
               <div style={{fontSize:11,fontWeight:900,color:tile.sm>15?"#4ade80":tile.sm>5?"#ffd700":"#555"}}>{tile.sm.toFixed(1)}</div>
             </div>

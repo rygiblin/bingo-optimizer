@@ -9,24 +9,26 @@ const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
 
 function buildPrompt(tileName, tileNotes, tileCategory, task) {
   // Note: we deliberately do NOT pass the current estHours to avoid anchoring the model.
-  // The model should derive the estimate purely from OSRS wiki data.
+  // The model should derive a raw/base estimate from OSRS wiki data.
   return `You are an Old School RuneScape expert with accurate OSRS wiki knowledge.
 
 Bingo tile: "${tileName}" (category: ${tileCategory}${tileNotes ? `, notes: ${tileNotes}` : ''})
 Task: "${task.desc}"
 Task type: ${task.type}${task.notes ? ` — ${task.notes}` : ''}
 
-Calculate the expected wall-clock hours for a competent 5-man team to complete this task.
+Calculate RAW expected wall-clock hours to complete this task with one execution stream.
+Do NOT apply extra team-size scaling multipliers in the estimate. The frontend handles scaling separately.
 
 RULES BY TYPE:
 - "drop": estHours = dropsNeeded / (dropRate × kcPerHour). For "A/B" or "A or B" tasks, use COMBINED drop rate (sum both rates — getting either one completes the task).
-- "kc": estHours = killsRequired / kcPerHour. Deterministic, no RNG factor.
+- "solokc" / "masskc" / "raid" / "kc": estHours = killsRequired / kcPerHour. Deterministic, no RNG factor.
+- "xp": estHours = xpTarget / xpPerHour. Deterministic, no RNG factor.
 - "points": estimate from points/hr rate at the relevant activity.
-- "challenge": estimate total hours including failures and learning curve for a competent team.
+- "challenge": estimate total hours including failures and learning curve.
 
 CoX mega-rares (TBOW, Kodai, Ancestral): ~1/300 per raid at 5-man team scale, ~4 raids/hr = ~75h expected.
 ToB uniques: ~1/9 per raid. ToA: scales with raid level.
-Assume wiki-accurate rates, not best-case.
+Assume wiki-accurate rates, not best-case. Keep result conservative and realistic.
 
 Respond with ONLY this JSON object — no markdown, no explanation, no code fences:
 {"estHours":<positive number>,"dropRate":<number or null>,"kcPerHour":<number or null>,"dropsNeeded":<integer or null>,"confidence":"high" or "medium" or "low","wikiNotes":"<brief calc note, max 80 chars>"}`;
