@@ -3,31 +3,33 @@
 // Receives: { tileName, tileNotes, tileCategory, task }
 // Returns:  { ok: true, result: { estHours, dropRate, kcPerHour, dropsNeeded, confidence, wikiNotes } }
 
-// Detailed prompt mirrors the one in App.jsx — more accurate than a generic OSRS prompt.
-// Uses OR-logic for combined drop rates, team scaling, and KC math rules.
+// Sonnet is used over Haiku here — OSRS drop rates and KC/hr values require
+// specific wiki knowledge that smaller models get wrong frequently.
+const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+
 function buildPrompt(tileName, tileNotes, tileCategory, task) {
-  return `You are an Old School RuneScape expert. Given this bingo tile task, provide accurate time estimates based on OSRS wiki data.
+  // Note: we deliberately do NOT pass the current estHours to avoid anchoring the model.
+  // The model should derive the estimate purely from OSRS wiki data.
+  return `You are an Old School RuneScape expert with accurate OSRS wiki knowledge.
 
-Tile: "${tileName}" (${tileCategory}) - ${tileNotes}
-Task: "${task.desc}" (type: ${task.type}) - ${task.notes || ''}
-Current estimate: ${task.estHours}h
+Bingo tile: "${tileName}" (category: ${tileCategory}${tileNotes ? `, notes: ${tileNotes}` : ''})
+Task: "${task.desc}"
+Task type: ${task.type}${task.notes ? ` — ${task.notes}` : ''}
 
-CRITICAL RULES for calculating estHours:
-1. OR logic: If the task lists multiple items separated by "/" or "or" (e.g. "Ancy/TBOW", "BCP or tassets"), use the COMBINED drop rate (sum of individual rates), NOT the rate of the rarest item alone. Getting any one of the listed items completes the task.
-2. CoX purples: The unique chest rate is roughly 1/9 per raid at standard team points. The unique table has ~50 items. Mega-rares (TBOW, Kodai, Ancestral pieces) share a small weight. "Ancy/TBOW" means either Ancestral OR Twisted Bow - use combined mega-rare weight (~1/34 of unique rolls = roughly 1/300 per raid at team scale, ~75h at 4 raids/hr).
-3. Team scale: Assume a competent 5-man team for raids, not solo. KC/hr should reflect team play.
-4. Multiple drops needed: If the task requires N of something, multiply expected hours by N.
-5. KC tasks: estHours = kills_required / kcPerHour (deterministic, no RNG multiplier).
+Calculate the expected wall-clock hours for a competent 5-man team to complete this task.
 
-Respond ONLY with a JSON object, no markdown, no explanation:
-{
-  "estHours": <number: expected wall-clock hours at base efficiency before team scaling. Apply OR-logic combined rates where applicable>,
-  "dropRate": <number or null: combined drop rate as decimal if OR logic applies, else individual rate. e.g. 0.003 for ~1/300>,
-  "kcPerHour": <number or null: kills or completions per hour for a competent team>,
-  "dropsNeeded": <number or null: how many drops required>,
-  "confidence": <"high"|"medium"|"low">,
-  "wikiNotes": <string: note the calculation used, e.g. "Combined Ancy+TBOW mega-rare rate ~1/300 at team scale". Max 80 chars>
-}`;
+RULES BY TYPE:
+- "drop": estHours = dropsNeeded / (dropRate × kcPerHour). For "A/B" or "A or B" tasks, use COMBINED drop rate (sum both rates — getting either one completes the task).
+- "kc": estHours = killsRequired / kcPerHour. Deterministic, no RNG factor.
+- "points": estimate from points/hr rate at the relevant activity.
+- "challenge": estimate total hours including failures and learning curve for a competent team.
+
+CoX mega-rares (TBOW, Kodai, Ancestral): ~1/300 per raid at 5-man team scale, ~4 raids/hr = ~75h expected.
+ToB uniques: ~1/9 per raid. ToA: scales with raid level.
+Assume wiki-accurate rates, not best-case.
+
+Respond with ONLY this JSON object — no markdown, no explanation, no code fences:
+{"estHours":<positive number>,"dropRate":<number or null>,"kcPerHour":<number or null>,"dropsNeeded":<integer or null>,"confidence":"high" or "medium" or "low","wikiNotes":"<brief calc note, max 80 chars>"}`;
 }
 
 export default async function handler(req, res) {
@@ -49,9 +51,9 @@ export default async function handler(req, res) {
 
   const prompt = buildPrompt(tileName, tileNotes, tileCategory, task);
 
-  // Abort the upstream call if it takes longer than 15 seconds
+  // Abort the upstream call if it takes longer than 20 seconds (Sonnet is slightly slower)
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
 
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -62,10 +64,9 @@ export default async function handler(req, res) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        // haiku is fast and cheap — good fit for structured JSON extraction
-        model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
+        model: MODEL,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 500,
+        max_tokens: 300,
       }),
       signal: controller.signal,
     });
@@ -78,22 +79,29 @@ export default async function handler(req, res) {
     }
 
     const j = await r.json().catch(() => ({}));
-    const raw = j.content?.[0]?.text || JSON.stringify(j);
+    const raw = j.content?.[0]?.text || '';
+    console.log('[enrich] model raw response:', raw);
 
-    // Parse the JSON block out of the model response
+    // Extract JSON block from response — handles cases where model adds extra text
     let output = null;
     try {
       const m = String(raw).match(/\{[\s\S]*\}/);
       if (m) output = JSON.parse(m[0]);
     } catch {
-      console.warn('Failed to parse model JSON response');
+      console.warn('[enrich] Failed to parse model JSON:', raw);
     }
 
-    return res.json({ ok: true, result: output || j });
+    // Validate estHours is usable before sending back — frontend relies on this being a positive number
+    if (!output || typeof output.estHours !== 'number' || output.estHours <= 0) {
+      console.error('[enrich] Invalid estHours in output:', output);
+      return res.status(502).json({ ok: false, error: 'Model returned unusable estHours', raw });
+    }
+
+    return res.json({ ok: true, result: output });
   } catch (err) {
     clearTimeout(timeoutId);
     if (err.name === 'AbortError') {
-      return res.status(504).json({ ok: false, error: 'Upstream timeout after 15s' });
+      return res.status(504).json({ ok: false, error: 'Upstream timeout after 20s' });
     }
     console.error('Handler error:', err);
     return res.status(500).json({ ok: false, error: err.message });

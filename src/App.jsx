@@ -300,6 +300,14 @@ function useWikiData(tiles, setTiles) {
     setEnriching(p => ({...p, [taskId]: true}));
     try {
       const result = await callEnrichAPI(tile.name, tile.notes||"", tile.cat, task);
+      console.log('[enrich] raw result for', task.desc, result);
+
+      // Guard: if estHours isn't a valid positive number, don't overwrite existing data
+      if (!result || typeof result.estHours !== 'number' || result.estHours <= 0) {
+        console.error('[enrich] unusable estHours returned:', result);
+        return null;
+      }
+
       const enriched = {
         estHours: result.estHours,
         dropRate: result.dropRate,
