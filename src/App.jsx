@@ -367,6 +367,28 @@ async function callEnrichAPI(tileName, tileNotes, tileCategory, task) {
   );
 }
 
+async function callStrategyMessageAPI(payload) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 14000);
+  try {
+    const res = await fetch('/api/strategy-message', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const txt = await res.text().catch(() => '');
+    let j = {};
+    try { j = txt ? JSON.parse(txt) : {}; } catch {}
+    if (!res.ok) {
+      throw new Error(j?.error || `Strategy API error ${res.status}`);
+    }
+    return j.result || null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function useWikiData(tiles, setTiles) {
   const [wikiData, setWikiData] = useState({});
   const [enriching, setEnriching] = useState({});
@@ -1442,6 +1464,153 @@ function TeamRoles({done,tiles,teamPlayers,teamCap}){
   </div>;
 }
 
+function StrategyCenter({selectedTeam, pri, eventEndMs}) {
+  const [windowHours, setWindowHours] = useState(6);
+  const [tone, setTone] = useState("direct");
+  const [len, setLen] = useState("medium");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiErr, setAiErr] = useState("");
+  const [aiMsg, setAiMsg] = useState(null);
+
+  const brief = useMemo(() => {
+    const hoursRemaining = Math.max(0, (eventEndMs - Date.now()) / 36e5);
+    const totalWindow = (EVENT_END - EVENT_START) / 36e5;
+    const progress = Math.min(1, Math.max(0, (Date.now() - EVENT_START.getTime()) / Math.max(totalWindow * 36e5, 1)));
+    const phase = progress < 0.35 ? "early" : progress < 0.75 ? "mid" : "late";
+    const top = pri.slice(0, 5).map(t => ({
+      tileId: t.id,
+      tileName: t.name,
+      cat: t.cat,
+      workMode: t.workMode || defaultWorkMode(t),
+      actionType: t.dc >= 2 ? "to_gold" : t.dc >= 1 ? "to_silver" : "to_bronze",
+      targetLabel: t.dc >= 2 ? "Gold" : t.dc >= 1 ? "Silver" : "Bronze",
+      estHours: Number(t.eH || 0),
+      pointsGain: Number(t.mP || 0),
+      confidence: Math.max(0, Math.min(1, 1 - Math.min(1, (t.eH || 0) / Math.max(hoursRemaining, 1)))),
+      tags: [
+        (t.eH || 0) < 8 ? "quick-win" : "longer-task",
+        (t.lS || 0) > 50 ? "line-leverage" : "value",
+        modeLabel(t.workMode || defaultWorkMode(t)).toLowerCase()
+      ],
+      rationale: [
+        (t.eH || 0) < 8 ? "Fast projected completion in current window" : "Longer path but meaningful value",
+        (t.mP || 0) > 20 ? "High marginal points impact" : "Supports steady board progress",
+        (t.lS || 0) > 50 ? "Strong line leverage opportunity" : "Useful incremental progress"
+      ]
+    }));
+    const byCat = cat => top.filter(x => x.cat === cat).slice(0, 3);
+    const avoidNow = [...pri]
+      .filter(t => t.eH > Math.max(windowHours * 1.5, 10) && t.mP < 15)
+      .slice(0, 3)
+      .map(t => ({
+        tileId: t.id,
+        tileName: t.name,
+        estHours: Number(t.eH || 0),
+        rationale: ["High projected time for low short-window return"]
+      }));
+    return {
+      meta: {
+        generatedAt: Date.now(),
+        hoursRemaining,
+        windowHours,
+        phase,
+        mode: "balanced",
+      },
+      teamFocus: top,
+      roleFocus: {
+        raiders: byCat("raids"),
+        pvm: byCat("pvm"),
+        slayer: byCat("slayer"),
+        skilling: byCat("skilling"),
+        mass: byCat("mass"),
+      },
+      avoidNow,
+      risks: avoidNow.map(x => `${x.tileName} likely low ROI in next ${windowHours}h`),
+      opportunities: top.filter(x => x.tags.includes("line-leverage")).map(x => `${x.tileName} can accelerate line completion`),
+    };
+  }, [pri, windowHours, eventEndMs]);
+
+  const deterministicMessage = useMemo(() => {
+    const lines = brief.teamFocus.slice(0, 5).map((x, i) =>
+      `${i + 1}) #${x.tileId} ${x.tileName} — ~${Math.round(x.estHours)}h (${x.targetLabel})`
+    );
+    return `**${selectedTeam} Strategy Brief (next ${windowHours}h)**\n` +
+      `Time remaining: ${Math.round(brief.meta.hoursRemaining)}h · Phase: ${brief.meta.phase}\n\n` +
+      `**Team Focus**\n${lines.join("\n") || "- No strong focus candidates"}\n\n` +
+      `**Why this plan**\n` +
+      `${brief.teamFocus.slice(0, 3).map(x => `- ${x.tileName}: ${x.rationale[0]}; ${x.rationale[2]}.`).join("\n")}\n`;
+  }, [brief, selectedTeam, windowHours]);
+  const teamDirectiveMessage = useMemo(() => {
+    if (!aiMsg?.message) return "";
+    return `${aiMsg.message}\n\n---\n\n${deterministicMessage}`;
+  }, [aiMsg, deterministicMessage]);
+
+  const copy = async text => {
+    try { await navigator.clipboard.writeText(text); } catch {}
+  };
+
+  const generateAI = async () => {
+    setAiErr("");
+    setAiBusy(true);
+    try {
+      const result = await callStrategyMessageAPI({
+        teamName: selectedTeam,
+        brief,
+        style: tone,
+        length: len,
+        includePerPlayer: false,
+      });
+      setAiMsg(result);
+    } catch (e) {
+      setAiErr(e.message || "Failed to generate AI message");
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  return <div>
+    <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8,flexWrap:"wrap"}}>
+      <span style={{fontSize:10,color:"#bbb",fontWeight:700}}>STRATEGY DIRECTIVE</span>
+      <label style={{fontSize:8,color:"#555"}}>Window
+        <select value={windowHours} onChange={e=>setWindowHours(Number(e.target.value)||6)} style={{marginLeft:4,background:"#151921",color:"#ddd",border:"1px solid #2a2f3a",borderRadius:3,padding:"2px 4px",fontSize:8}}>
+          <option value={4}>4h</option><option value={6}>6h</option><option value={8}>8h</option>
+        </select>
+      </label>
+      <label style={{fontSize:8,color:"#555"}}>Tone
+        <select value={tone} onChange={e=>setTone(e.target.value)} style={{marginLeft:4,background:"#151921",color:"#ddd",border:"1px solid #2a2f3a",borderRadius:3,padding:"2px 4px",fontSize:8}}>
+          <option value="direct">Direct</option><option value="motivational">Motivational</option><option value="concise">Concise</option>
+        </select>
+      </label>
+      <label style={{fontSize:8,color:"#555"}}>Length
+        <select value={len} onChange={e=>setLen(e.target.value)} style={{marginLeft:4,background:"#151921",color:"#ddd",border:"1px solid #2a2f3a",borderRadius:3,padding:"2px 4px",fontSize:8}}>
+          <option value="short">Short</option><option value="medium">Medium</option><option value="long">Long</option>
+        </select>
+      </label>
+      <button onClick={generateAI} disabled={aiBusy} style={{fontSize:8,background:"rgba(96,165,250,0.1)",color:"#60a5fa",border:"1px solid rgba(96,165,250,0.25)",borderRadius:3,padding:"2px 8px",cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>
+        {aiBusy ? "Generating..." : "Generate AI Message"}
+      </button>
+      <button onClick={()=>copy(deterministicMessage)} style={{fontSize:8,background:"rgba(255,255,255,0.03)",color:"#bbb",border:"1px solid rgba(255,255,255,0.12)",borderRadius:3,padding:"2px 8px",cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>
+        Copy Deterministic
+      </button>
+      {aiMsg?.message && <button onClick={()=>copy(teamDirectiveMessage)} style={{fontSize:8,background:"rgba(74,222,128,0.12)",color:"#4ade80",border:"1px solid rgba(74,222,128,0.25)",borderRadius:3,padding:"2px 8px",cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>Copy Team Directive</button>}
+      <span style={{fontSize:7,color:"#444",marginLeft:"auto"}}>Guardrails: low-token model, ~12s timeout, 90s cooldown</span>
+    </div>
+
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+      <div style={{background:"rgba(0,0,0,0.2)",border:"1px solid rgba(255,255,255,0.05)",borderRadius:5,padding:"8px 10px"}}>
+        <div style={{fontSize:9,color:"#ffd700",fontWeight:700,marginBottom:6}}>Deterministic Brief</div>
+        <pre style={{whiteSpace:"pre-wrap",margin:0,fontSize:8,color:"#aaa",fontFamily:"inherit"}}>{deterministicMessage}</pre>
+      </div>
+      <div style={{background:"rgba(0,0,0,0.2)",border:"1px solid rgba(255,255,255,0.05)",borderRadius:5,padding:"8px 10px"}}>
+        <div style={{fontSize:9,color:"#60a5fa",fontWeight:700,marginBottom:6}}>AI Team Directive</div>
+        {aiErr && <div style={{fontSize:8,color:"#ff6b6b",marginBottom:6}}>{aiErr}</div>}
+        {aiMsg?.headline && <div style={{fontSize:9,color:"#e2e8f0",fontWeight:700,marginBottom:4}}>{aiMsg.headline}</div>}
+        <pre style={{whiteSpace:"pre-wrap",margin:0,fontSize:8,color:"#aaa",fontFamily:"inherit"}}>{teamDirectiveMessage || "Generate to create a Discord-ready directive with rationale + deterministic tile focus."}</pre>
+      </div>
+    </div>
+  </div>;
+}
+
 function TeamCompare(){
   const cats=["raids","pvm","slayer","skilling","mass"];
   const teamData=useMemo(()=>Object.entries(TEAMS).map(([name,players])=>{
@@ -1728,7 +1897,7 @@ export default function App(){
 
     <div style={{marginTop:18,background:"rgba(255,255,255,0.012)",borderRadius:6,border:"1px solid rgba(255,255,255,0.04)",overflow:"hidden"}}>
       <div style={{display:"flex",borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
-        {[{id:"scenarios",label:"Scenarios",desc:"B/S/G compare"},{id:"line",label:"Line Planner",desc:"Bingo probability"},{id:"online",label:"Who's Online",desc:"Active priority"},{id:"roles",label:"Team Roles",desc:"Pts/hr by role"},{id:"compare",label:"All Teams",desc:"Side-by-side"}].map(t=>(
+        {[{id:"scenarios",label:"Scenarios",desc:"B/S/G compare"},{id:"line",label:"Line Planner",desc:"Bingo probability"},{id:"online",label:"Who's Online",desc:"Active priority"},{id:"roles",label:"Team Roles",desc:"Pts/hr by role"},{id:"strategy",label:"Strategy",desc:"Discord directive"},{id:"compare",label:"All Teams",desc:"Side-by-side"}].map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"8px 6px",cursor:"pointer",background:tab===t.id?"rgba(255,215,0,0.04)":"transparent",border:"none",borderBottom:tab===t.id?"2px solid #ffd700":"2px solid transparent",color:tab===t.id?"#ffd700":"#555",fontSize:10,fontWeight:tab===t.id?700:400}}>
             <div>{t.label}</div><div style={{fontSize:7,color:tab===t.id?"#666":"#333",marginTop:1}}>{t.desc}</div>
           </button>
@@ -1739,6 +1908,7 @@ export default function App(){
         {tab==="line"&&<LinePlanner done={done} tiles={tiles} teamPlayers={teamPlayers} teamCap={teamCap}/>}
         {tab==="online"&&<WhosOnline done={done} tiles={tiles} teamPlayers={teamPlayers} teamCap={teamCap}/>}
         {tab==="roles"&&<TeamRoles done={done} tiles={tiles} teamPlayers={teamPlayers} teamCap={teamCap}/>}
+        {tab==="strategy"&&<StrategyCenter selectedTeam={selectedTeam} pri={pri} eventEndMs={EVENT_END.getTime()}/>}
         {tab==="compare"&&<TeamCompare/>}
       </div>
     </div>
