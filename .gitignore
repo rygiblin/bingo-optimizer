@@ -27,3 +27,5 @@ server/node_modules
 server/server.log
 server/server.pid
 vite.pid
+.vercel
+.env*.local

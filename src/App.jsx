@@ -272,30 +272,27 @@ function useWikiData(tiles, setTiles) {
   const [enrichProgress, setEnrichProgress] = useState(null);
 
   useEffect(() => {
-    (async () => {
+    // Load persisted wiki data from localStorage on mount — synchronous, no async needed
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('wiki:'));
+    if (!keys.length) return;
+    const loaded = {};
+    for (const key of keys) {
       try {
-        const keys = await window.storage.list('wiki:');
-        if (!keys?.keys?.length) return;
-        const loaded = {};
-        for (const key of keys.keys) {
-          try {
-            const res = await window.storage.get(key);
-            if (res?.value) loaded[key.replace('wiki:','')] = JSON.parse(res.value);
-          } catch {}
-        }
-        if (Object.keys(loaded).length > 0) {
-          setWikiData(loaded);
-          setTiles(prev => prev.map(tile => ({
-            ...tile,
-            tasks: tile.tasks.map(task => {
-              const d = loaded[task.id];
-              if (!d) return task;
-              return {...task, estHours: d.estHours, wikiEnriched: true, wikiConfidence: d.confidence, wikiNotes: d.wikiNotes};
-            })
-          })));
-        }
+        const val = localStorage.getItem(key);
+        if (val) loaded[key.replace('wiki:', '')] = JSON.parse(val);
       } catch {}
-    })();
+    }
+    if (Object.keys(loaded).length > 0) {
+      setWikiData(loaded);
+      setTiles(prev => prev.map(tile => ({
+        ...tile,
+        tasks: tile.tasks.map(task => {
+          const d = loaded[task.id];
+          if (!d) return task;
+          return {...task, estHours: d.estHours, wikiEnriched: true, wikiConfidence: d.confidence, wikiNotes: d.wikiNotes};
+        })
+      })));
+    }
   }, []);
 
   const enrichTask = async (tile, task) => {
@@ -312,7 +309,8 @@ function useWikiData(tiles, setTiles) {
         wikiNotes: result.wikiNotes || "",
         enrichedAt: Date.now()
       };
-      await window.storage.set(`wiki:${taskId}`, JSON.stringify(enriched));
+      // Persist enriched data so it survives page refresh
+      localStorage.setItem(`wiki:${taskId}`, JSON.stringify(enriched));
       setWikiData(p => ({...p, [taskId]: enriched}));
       setTiles(prev => prev.map(t => t.id !== tile.id ? t : {
         ...t,
@@ -354,10 +352,8 @@ function useWikiData(tiles, setTiles) {
   };
 
   const clearAll = async () => {
-    try {
-      const keys = await window.storage.list('wiki:');
-      if (keys?.keys) for (const k of keys.keys) await window.storage.delete(k);
-    } catch {}
+    // Remove all wiki: keys from localStorage
+    Object.keys(localStorage).filter(k => k.startsWith('wiki:')).forEach(k => localStorage.removeItem(k));
     setWikiData({});
     setTiles(prev => prev.map(tile => ({
       ...tile,
@@ -447,7 +443,8 @@ function TileEditor({tile, onSave, onCancel, enrichTask, enriching, wikiData}){
   const handleEnrich = async (i, forceRefresh=false) => {
     const task = tasks[i];
     if (forceRefresh) {
-      try { await window.storage.delete(`wiki:${task.id}`); } catch {}
+      // Clear cached entry so the API call runs fresh
+      localStorage.removeItem(`wiki:${task.id}`);
     }
     const result = await enrichTask(tile, task);
     if (result) {
