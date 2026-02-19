@@ -26,6 +26,11 @@ RULES BY TYPE:
 - "points": estimate from points/hr rate at the relevant activity.
 - "challenge": estimate total hours including failures and learning curve.
 
+KC TARGET HINT:
+- If a KC target is clearly inferable from the task text (e.g. "150 KC"), include a short marker in wikiNotes:
+  "target=150kc".
+- If unclear, omit the marker.
+
 CoX mega-rares (TBOW, Kodai, Ancestral): ~1/300 per raid at 5-man team scale, ~4 raids/hr = ~75h expected.
 ToB uniques: ~1/9 per raid. ToA: scales with raid level.
 Assume wiki-accurate rates, not best-case. Keep result conservative and realistic.

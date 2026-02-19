@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
+import "./App.css";
 
 // Feb 19 3PM EST = 20:00 UTC | Mar 1 12PM EST = 17:00 UTC
 const EVENT_START = new Date('2026-02-19T20:00:00Z');
@@ -216,14 +217,73 @@ function normalizeTaskType(taskType) {
   if (taskType === "drop" || taskType === "xp" || taskType === "points" || taskType === "challenge") return taskType;
   return "drop";
 }
+function defaultProgressUnit(taskType) {
+  const t = normalizeTaskType(taskType);
+  if (t === "kc") return "kc";
+  if (t === "xp") return "xp";
+  if (t === "points") return "points";
+  return null;
+}
+function parseNonNeg(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return n;
+}
+function parseTargetFromText(text, unit = "kc") {
+  if (!text) return 0;
+  const source = String(text).toLowerCase();
+  const unitToken = unit === "xp" ? "xp" : unit === "points" ? "points?" : "(?:kc|kills?)";
+  const m = source.match(new RegExp(`(\\d[\\d,.]*)\\s*${unitToken}`));
+  if (!m) return 0;
+  const raw = m[1].replace(/,/g, "");
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+function taskTargetAmount(task) {
+  const unit = task.progressUnit || defaultProgressUnit(task.type);
+  const explicit = parseNonNeg(task.targetAmount);
+  if (explicit > 0) return explicit;
+  if (!unit) return 0;
+  return parseTargetFromText(task.desc, unit);
+}
+function taskCurrentAmount(task) {
+  return parseNonNeg(task.currentAmount);
+}
+function taskRemainingAmount(task) {
+  const target = taskTargetAmount(task);
+  if (target <= 0) return 0;
+  return Math.max(0, target - taskCurrentAmount(task));
+}
+function taskDisplayHours(task) {
+  const baseHours = Math.max(0, Number(task.estHours) || 0);
+  const type = normalizeTaskType(task.type);
+  if (type !== "kc") return baseHours;
+  const target = taskTargetAmount(task);
+  if (target <= 0 || baseHours <= 0) return baseHours;
+  const remaining = taskRemainingAmount(task);
+  return baseHours * (remaining / target);
+}
+function taskRatePerHour(task) {
+  const target = taskTargetAmount(task);
+  const baseHours = Math.max(0, Number(task.estHours) || 0);
+  if (target <= 0 || baseHours <= 0) return 0;
+  return target / baseHours;
+}
 function isDeterministicType(taskType) {
   return normalizeTaskType(taskType) !== "drop";
 }
 function normTask(task) {
+  const type = normalizeTaskType(task.type || "drop");
+  const progressUnit = task.progressUnit || defaultProgressUnit(type);
+  const targetAmount = parseNonNeg(task.targetAmount);
+  const currentAmount = parseNonNeg(task.currentAmount);
   return {
     ...task,
-    type: task.type || "drop",
+    type,
     estHours: Number(task.estHours) > 0 ? Number(task.estHours) : 0,
+    progressUnit,
+    targetAmount: targetAmount > 0 ? targetAmount : 0,
+    currentAmount,
   };
 }
 function normTile(tile) {
@@ -443,6 +503,11 @@ function useWikiData(tiles, setTiles) {
           tasks: t.tasks.map(tk => tk.id !== taskId ? tk : {
             ...tk,
             estHours: enriched.estHours,
+            targetAmount: (normalizeTaskType(tk.type) === "kc" && !(parseNonNeg(tk.targetAmount) > 0))
+              ? (parseTargetFromText(tk.desc, "kc") || parseTargetFromText(enriched.wikiNotes, "kc") || 0)
+              : parseNonNeg(tk.targetAmount),
+            currentAmount: parseNonNeg(tk.currentAmount),
+            progressUnit: normalizeTaskType(tk.type) === "kc" ? "kc" : (tk.progressUnit || defaultProgressUnit(tk.type)),
             wikiEnriched: true,
             wikiConfidence: enriched.confidence,
             wikiNotes: enriched.wikiNotes
@@ -496,7 +561,7 @@ function useWikiData(tiles, setTiles) {
 
 // ─── END WIKI ENRICHMENT ────────────────────────────────────────────────────
 
-function remS(tile,ds){return tile.tasks.filter(t=>!ds.has(t.id)).sort((a,b)=>a.estHours-b.estHours);}
+function remS(tile,ds){return tile.tasks.filter(t=>!ds.has(t.id)).sort((a,b)=>taskDisplayHours(a)-taskDisplayHours(b));}
 
 // NEW SCORING FUNCTION
 function calculateScore(done, tiles) {
@@ -551,14 +616,16 @@ function getMarginalPoints(tileId, currentTasksOnTile, tasksToAdd, allTileTaskCo
   return taskPts + bonusGain;
 }
 
-function pG(tile,hours,effSc){const eh=hours*effSc,so=[...tile.tasks].sort((a,b)=>a.estHours-b.estHours);let cum=0,p=1;for(const t of so){const r=Math.max(0,eh-cum);if(isDeterministicType(t.type)){p*=r>=t.estHours?1:Math.min(1,r/t.estHours);}else{if(t.estHours>0)p*=1-Math.exp(-(1/t.estHours)*r);}cum+=t.estHours;}return Math.min(1,p);}
+function pG(tile,hours,effSc){const eh=hours*effSc,so=[...tile.tasks].sort((a,b)=>taskDisplayHours(a)-taskDisplayHours(b));let cum=0,p=1;for(const t of so){const h=taskDisplayHours(t);const r=Math.max(0,eh-cum);if(isDeterministicType(t.type)){p*=r>=h?1:Math.min(1,r/Math.max(h,0.0001));}else{if(h>0)p*=1-Math.exp(-(1/h)*r);}cum+=h;}return Math.min(1,p);}
 
 function Dots({c}){return <div style={{display:"flex",gap:2,justifyContent:"center"}}>{[0,1,2].map(i=><div key={i} style={{width:6,height:6,borderRadius:"50%",background:c>i?(i===0?"#cd7f32":i===1?"#c0c0c0":"#ffd700"):"rgba(255,255,255,0.07)"}}/>)}</div>;}
 
 function VBar({task}){
-  if(isDeterministicType(task.type))return <div style={{fontSize:9,color:"#555",marginTop:2}}>Fixed: <b style={{color:"#999"}}>{task.estHours.toFixed(1)}h</b></div>;
-  const l=task.estHours*0.35,d=task.estHours*2,sd=task.estHours*3,m=task.estHours*0.7;
-  return <div style={{marginTop:2}}><div style={{display:"flex",gap:6,fontSize:8,color:"#555",flexWrap:"wrap"}}><span>Lucky:<b style={{color:"#4ade80"}}>{l.toFixed(1)}h</b></span><span>Exp:<b style={{color:"#ffd700"}}>{task.estHours.toFixed(1)}h</b></span><span>Dry:<b style={{color:"#ff8c00"}}>{d.toFixed(1)}h</b></span></div><div style={{position:"relative",height:4,background:"rgba(255,255,255,0.04)",borderRadius:2,marginTop:2,overflow:"hidden"}}><div style={{position:"absolute",left:(l/sd*100)+"%",width:((d-l)/sd*100)+"%",height:"100%",background:"rgba(255,215,0,0.2)"}}/><div style={{position:"absolute",left:(m/sd*100)+"%",width:2,height:"100%",background:"#ffd700"}}/></div></div>;
+  const h = taskDisplayHours(task);
+  if(isDeterministicType(task.type))return <div style={{fontSize:9,color:"#555",marginTop:2}}>Fixed: <b style={{color:"#999"}}>{h.toFixed(1)}h</b></div>;
+  if (h <= 0) return <div style={{fontSize:9,color:"#555",marginTop:2}}>Exp: <b style={{color:"#999"}}>0.0h</b></div>;
+  const l=h*0.35,d=h*2,sd=h*3,m=h*0.7;
+  return <div style={{marginTop:2}}><div style={{display:"flex",gap:6,fontSize:8,color:"#555",flexWrap:"wrap"}}><span>Lucky:<b style={{color:"#4ade80"}}>{l.toFixed(1)}h</b></span><span>Exp:<b style={{color:"#ffd700"}}>{h.toFixed(1)}h</b></span><span>Dry:<b style={{color:"#ff8c00"}}>{d.toFixed(1)}h</b></span></div><div style={{position:"relative",height:4,background:"rgba(255,255,255,0.04)",borderRadius:2,marginTop:2,overflow:"hidden"}}><div style={{position:"absolute",left:(l/sd*100)+"%",width:((d-l)/sd*100)+"%",height:"100%",background:"rgba(255,215,0,0.2)"}}/><div style={{position:"absolute",left:(m/sd*100)+"%",width:2,height:"100%",background:"#ffd700"}}/></div></div>;
 }
 
 function TileEditor({tile, onSave, onCancel, enrichTask, enriching, wikiData}){
@@ -566,7 +633,13 @@ function TileEditor({tile, onSave, onCancel, enrichTask, enriching, wikiData}){
   const[notes,setNotes]=useState(tile.notes);
   const[workMode,setWorkMode]=useState(tile.workMode || defaultWorkMode(tile));
   const[tasks,setTasks]=useState(tile.tasks.map(t=>({...t,type:normalizeTaskType(t.type)})));
-  const up=(i,f,v)=>setTasks(p=>p.map((t,j)=>j===i?{...t,[f]:f==="estHours"?parseFloat(v)||0:v}:t));
+  const up=(i,f,v)=>setTasks(p=>p.map((t,j)=>{
+    if (j !== i) return t;
+    if (f === "estHours" || f === "targetAmount" || f === "currentAmount") {
+      return {...t,[f]:parseNonNeg(v)};
+    }
+    return {...t,[f]:v};
+  }));
 
   const handleEnrich = async (i, forceRefresh=false) => {
     const task = tasks[i];
@@ -576,9 +649,15 @@ function TileEditor({tile, onSave, onCancel, enrichTask, enriching, wikiData}){
     }
     const result = await enrichTask(tile, task, { persistCache: false });
     if (result) {
+      const maybeTargetFromDesc = parseTargetFromText(task.desc, "kc");
+      const maybeTargetFromWiki = parseTargetFromText(result.wikiNotes, "kc");
+      const shouldSeedKcTarget = normalizeTaskType(task.type) === "kc" && !(parseNonNeg(task.targetAmount) > 0);
       setTasks(p => p.map((t,j) => j===i ? {
         ...t,
         estHours: result.estHours,
+        targetAmount: shouldSeedKcTarget ? (maybeTargetFromDesc || maybeTargetFromWiki || parseNonNeg(t.targetAmount)) : t.targetAmount,
+        currentAmount: shouldSeedKcTarget ? parseNonNeg(t.currentAmount) : t.currentAmount,
+        progressUnit: normalizeTaskType(t.type) === "kc" ? "kc" : (t.progressUnit || defaultProgressUnit(t.type)),
         wikiEnriched: true,
         wikiConfidence: result.confidence,
         wikiNotes: result.wikiNotes
@@ -611,6 +690,12 @@ function TileEditor({tile, onSave, onCancel, enrichTask, enriching, wikiData}){
     {tasks.map((task,i)=>{
       const wd = wikiData[task.id];
       const isEnriching = enriching[task.id];
+      const targetAmount = taskTargetAmount(task);
+      const currentAmount = taskCurrentAmount(task);
+      const remainingAmount = taskRemainingAmount(task);
+      const remainingHours = taskDisplayHours(task);
+      const ratePerHour = taskRatePerHour(task);
+      const isKc = normalizeTaskType(task.type) === "kc";
       return <div key={i} style={{background:"rgba(0,0,0,0.15)",borderRadius:4,padding:6,marginBottom:4}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
           <span style={{fontSize:9,color:MIC[i+1],fontWeight:700}}>Task {i+1}</span>
@@ -628,8 +713,15 @@ function TileEditor({tile, onSave, onCancel, enrichTask, enriching, wikiData}){
           <div><div style={{fontSize:7,color:"#444",display:"flex",justifyContent:"space-between"}}><span>Hours</span>{wd&&<span style={{color:confColor(wd.confidence)}}>{wd.estHours.toFixed(1)}h</span>}</div><input type="number" step="0.1" value={task.estHours} onChange={e=>up(i,"estHours",e.target.value)} style={{...ins,color:task.wikiEnriched?"#60a5fa":"#ffd700"}}/></div>
           <div><div style={{fontSize:7,color:"#444"}}>Type</div><select value={normalizeTaskType(task.type)} onChange={e=>up(i,"type",e.target.value)} style={ins}><option value="drop">Drop</option><option value="kc">KC</option><option value="xp">XP</option><option value="points">Points</option><option value="challenge">Challenge</option></select></div>
         </div>
+        {isKc && <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:4,marginTop:4}}>
+          <div><div style={{fontSize:7,color:"#444"}}>Target KC</div><input type="number" min="0" step="1" value={targetAmount} onChange={e=>up(i,"targetAmount",e.target.value)} style={ins}/></div>
+          <div><div style={{fontSize:7,color:"#444"}}>Current KC</div><input type="number" min="0" step="1" value={currentAmount} onChange={e=>up(i,"currentAmount",e.target.value)} style={ins}/></div>
+          <div><div style={{fontSize:7,color:"#444"}}>Remaining KC</div><div style={{...ins,color:"#9ca3af",display:"flex",alignItems:"center"}}>{Math.max(0, Math.round(remainingAmount))}</div></div>
+          <div><div style={{fontSize:7,color:"#444"}}>Remaining Hours</div><div style={{...ins,color:"#60a5fa",display:"flex",alignItems:"center"}}>{remainingHours.toFixed(1)}h</div></div>
+        </div>}
         {wd && <div style={{marginTop:3,fontSize:7,color:"#444",fontStyle:"italic",lineHeight:1.3}}>
           {wd.kcPerHour&&<span style={{marginRight:6}}>⚔️ {wd.kcPerHour}/hr</span>}
+          {isKc && ratePerHour>0 && <span style={{marginRight:6}}>📈 {ratePerHour.toFixed(1)} KC/hr (base)</span>}
           {wd.dropRate&&<span style={{marginRight:6}}>👀 1/{Math.round(1/wd.dropRate)}</span>}
           {wd.dropsNeeded&&<span style={{marginRight:6}}>×{wd.dropsNeeded} needed</span>}
           {wd.wikiNotes&&<span style={{color:"#555"}}>{wd.wikiNotes}</span>}
@@ -759,7 +851,7 @@ function Scenarios({done,tiles,teamPlayers,teamCap}){
     
     const sc = calculateScore(scenDone, tiles);
     let th = 0;
-    Object.entries(s.medals).forEach(([tid,tLv])=>{const id=+tid,cur=actMed[id]||0;if(tLv<=cur)return;const tile=tiles.find(t=>t.id===id);if(!tile)return;const cd=new Set(tile.tasks.filter(tk=>done.has(tk.id)).map(tk=>tk.id));const rm=remS(tile,cd);const need=tLv-cur;const eff=tileScale(tile,teamPlayers.length,teamCap);for(let j=0;j<need&&j<rm.length;j++)th+=rm[j].estHours/eff;});
+    Object.entries(s.medals).forEach(([tid,tLv])=>{const id=+tid,cur=actMed[id]||0;if(tLv<=cur)return;const tile=tiles.find(t=>t.id===id);if(!tile)return;const cd=new Set(tile.tasks.filter(tk=>done.has(tk.id)).map(tk=>tk.id));const rm=remS(tile,cd);const need=tLv-cur;const eff=tileScale(tile,teamPlayers.length,teamCap);for(let j=0;j<need&&j<rm.length;j++)th+=taskDisplayHours(rm[j])/eff;});
     return{...s,...sc,th,fF:th<=tF,fE:th<=tE};
   });
   const maxPts=Math.max(...results.map(r=>r.total),1);
@@ -822,7 +914,7 @@ function pGTarget(tile, targetMedal, doneTasks, hours, effSc) {
   const eh = hours * effSc;
   const remaining = [...tile.tasks]
     .filter(t => !doneTasks.has(t.id))
-    .sort((a,b) => a.estHours - b.estHours);
+    .sort((a,b) => taskDisplayHours(a) - taskDisplayHours(b));
   const already = tile.tasks.filter(t => doneTasks.has(t.id)).length;
   const need = Math.max(0, targetMedal - already);
   if (need <= 0) return 1; // already achieved
@@ -833,12 +925,13 @@ function pGTarget(tile, targetMedal, doneTasks, hours, effSc) {
   let cum = 0, p = 1;
   for (const t of chosen) {
     const r = Math.max(0, eh - cum);
+    const taskHours = taskDisplayHours(t);
     if (isDeterministicType(t.type)) {
-      p *= r >= t.estHours ? 1 : Math.min(1, r / t.estHours);
+      p *= r >= taskHours ? 1 : Math.min(1, r / Math.max(taskHours, 0.0001));
     } else {
-      if (t.estHours > 0) p *= 1 - Math.exp(-(1/t.estHours) * r);
+      if (taskHours > 0) p *= 1 - Math.exp(-(1/taskHours) * r);
     }
-    cum += t.estHours;
+    cum += taskHours;
   }
   return Math.min(1, p);
 }
@@ -848,9 +941,9 @@ function tileHoursForTarget(tile, targetMedal, doneTasks, effSc) {
   const need = Math.max(0, targetMedal - already);
   const remaining = [...tile.tasks]
     .filter(t => !doneTasks.has(t.id))
-    .sort((a,b) => a.estHours - b.estHours);
+    .sort((a,b) => taskDisplayHours(a) - taskDisplayHours(b));
   let h = 0;
-  for (let i = 0; i < need && i < remaining.length; i++) h += remaining[i].estHours / effSc;
+  for (let i = 0; i < need && i < remaining.length; i++) h += taskDisplayHours(remaining[i]) / effSc;
   return h;
 }
 
@@ -1258,9 +1351,9 @@ function WhosOnline({done, tiles, teamPlayers, teamCap}) {
       const tsDone = new Set(tile.tasks.filter(tk=>done.has(tk.id)).map(tk=>tk.id));
       const rem = remS(tile, tsDone);
       const effSc = tileScale(tile, activePlayers.length, activeCap);
-      const eH = rem.reduce((s,t)=>s+t.estHours,0) / effSc;
+      const eH = rem.reduce((s,t)=>s+taskDisplayHours(t),0) / effSc;
       const cheapest = rem.length > 0 ? rem[0] : null;
-      const cheapH = cheapest ? cheapest.estHours/effSc : Infinity;
+      const cheapH = cheapest ? taskDisplayHours(cheapest)/effSc : Infinity;
       
       // Calculate marginal points from completing this tile
       const tasksNeeded = 3 - dc;
@@ -1292,6 +1385,16 @@ function WhosOnline({done, tiles, teamPlayers, teamCap}) {
     [...met.filter(t=>t.dc<3 && t.canDo)]
       .sort((a,b)=>sort==="smart"?b.sm-a.sm:sort==="fast"?a.cheapH-b.cheapH:sort==="value"?b.mP-a.mP:b.lS-a.lS)
   , [met, sort]);
+  const catSummary = useMemo(() => Object.entries(CAT_LABEL).map(([cat, label]) => {
+    const ct = met.filter(t => t.cat === cat && t.dc < 3);
+    if (!ct.length) return null;
+    const tE = teamCategoryHours(activePlayers, cat, "expected");
+    const tC = teamCategoryHours(activePlayers, cat, "ceiling");
+    const needed = ct.reduce((sum, tile) => sum + tile.rem.reduce((s, task) => s + taskDisplayHours(task), 0), 0);
+    const pct = Math.min(1, needed / Math.max(tE, 1));
+    const mult = activeCap[cat] || 1.0;
+    return { cat, label, count: ct.length, needed, tE, tC, pct, mult };
+  }).filter(Boolean), [met, activePlayers, activeCap]);
 
   const blocked = met.filter(t => t.dc < 3 && !t.canDo);
   const sorted = [...teamPlayers].sort((a,b) => b.secs-a.secs);
@@ -1333,6 +1436,26 @@ function WhosOnline({done, tiles, teamPlayers, teamCap}) {
         <span>Avg SECS: <b style={{color:"#ffd700"}}>{Math.round(activePlayers.reduce((s,p)=>s+p.secs,0)/activePlayers.length)}</b></span>
         <span>Raiders: <b style={{color:"#e74c3c"}}>{activePlayers.filter(p=>(p.tob+p.cox+p.toa)>150).length}</b></span>
       </div>}
+    </div>
+
+    <div style={{marginBottom:10}}>
+      <div style={{fontSize:9,color:"#444",letterSpacing:1,fontWeight:700,marginBottom:6}}>CAPABILITY SNAPSHOT</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:6}}>
+        {catSummary.map(row => {
+          const statusColor = row.pct > 0.9 ? "#ff6b6b" : row.pct > 0.6 ? "#ffd700" : "#4ade80";
+          return <div key={row.cat} style={{background:"rgba(0,0,0,0.22)",borderRadius:5,padding:"7px 8px",border:`1px solid ${CC[row.cat]}33`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:9,fontWeight:700,color:CC[row.cat]}}>{row.label}</span>
+              <span style={{fontSize:7,color:statusColor,fontWeight:700}}>{Math.round(row.pct * 100)}%</span>
+            </div>
+            <div style={{fontSize:7,color:"#444",marginTop:2}}>{row.count} tiles · ×{row.mult.toFixed(2)}</div>
+            <div style={{height:4,background:"rgba(255,255,255,0.05)",borderRadius:2,marginTop:4,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${row.pct * 100}%`,background:statusColor,borderRadius:2}}/>
+            </div>
+            <div style={{fontSize:7,color:"#333",marginTop:2}}>{Math.round(row.needed)}h need / {Math.round(row.tE)}h exp</div>
+          </div>;
+        })}
+      </div>
     </div>
 
     {/* Sort controls */}
@@ -1384,83 +1507,6 @@ function WhosOnline({done, tiles, teamPlayers, teamCap}) {
     {blocked.length > 0 && <div style={{marginTop:6,fontSize:7,color:"#333"}}>
       Tiles requiring players not online: {blocked.map(t=>t.name).join(", ")}
     </div>}
-  </div>;
-}
-
-function TeamRoles({done,tiles,teamPlayers,teamCap}){
-  const[filterCat,setFilterCat]=useState("all");
-  const[sortBy,setSortBy]=useState("pph");
-  const tileData=useMemo(()=>{
-    const tileTaskCounts = {};
-    tiles.forEach(t => {
-      tileTaskCounts[t.id] = t.tasks.filter(tk => done.has(tk.id)).length;
-    });
-    
-    return tiles.filter(t=>tileTaskCounts[t.id]<3).map(tile=>{
-      const dc=tileTaskCounts[tile.id],doneTasks=new Set(tile.tasks.filter(tk=>done.has(tk.id)).map(tk=>tk.id));
-      const remaining=remS(tile,doneTasks),effSc=tileScale(tile,teamPlayers.length,teamCap);
-      const needCount=3-dc;let hoursToGold=0;
-      for(let j=0;j<needCount&&j<remaining.length;j++)hoursToGold+=remaining[j].estHours/effSc;
-      
-      // Calculate marginal points
-      const mPts = getMarginalPoints(tile.id, dc, needCount, tileTaskCounts);
-      
-      let lineVal=0;LINES.filter(l=>l.tiles.includes(tile.id)).forEach(line=>{const og=line.tiles.filter(t=>t!==tile.id&&tileTaskCounts[t]>=3).length;if(og===4)lineVal+=45;else if(og===3)lineVal+=13.5;});
-      const pphFull=hoursToGold>0?(mPts+lineVal)/hoursToGold:0,nextTask=remaining[0]||null,nextHours=nextTask?nextTask.estHours/effSc:0;
-      const totalTaskHrs=remaining.slice(0,needCount).reduce((s,t)=>s+t.estHours,0);
-      const tF=teamCategoryHours(teamPlayers,tile.cat,"floor"),tE=teamCategoryHours(teamPlayers,tile.cat,"expected");
-      return{...tile,dc,hoursToGold,pphFull,lineVal,mPts,effSc,nextTask,nextHours,remaining,totalTaskHrs,fitsFloor:tF>=totalTaskHrs,fitsExp:tE>=totalTaskHrs};
-    }).sort((a,b)=>sortBy==="pph"?b.pphFull-a.pphFull:sortBy==="fast"?a.hoursToGold-b.hoursToGold:b.lineVal-a.lineVal);
-  },[done,tiles,teamPlayers,teamCap,sortBy]);
-
-  const catSummary=useMemo(()=>Object.entries(CAT_LABEL).map(([cat,label])=>{
-    const ct=tileData.filter(t=>t.cat===cat);if(!ct.length)return null;
-    const tF=teamCategoryHours(teamPlayers,cat,"floor"),tE=teamCategoryHours(teamPlayers,cat,"expected"),tC=teamCategoryHours(teamPlayers,cat,"ceiling");
-    const needed=ct.reduce((s,t)=>s+t.totalTaskHrs,0),pct=Math.min(1,needed/Math.max(tE,1)),mult=teamCap[cat]||1.0;
-    return{cat,label,count:ct.length,tF,tE,tC,needed,pct,mult,status:pct>0.9?"⚠ Tight":pct>0.6?"→ Moderate":"✓ Easy"};
-  }).filter(Boolean),[tileData,teamPlayers,teamCap]);
-
-  const filtered=filterCat==="all"?tileData:tileData.filter(t=>t.cat===filterCat);
-  const cats=["all",...new Set(tileData.map(t=>t.cat))];
-  const sb=(a,c)=>({fontSize:10,padding:"3px 10px",borderRadius:3,cursor:"pointer",fontWeight:a?700:400,background:a?`${c}22`:"rgba(255,255,255,0.02)",border:`1px solid ${a?c+"55":"rgba(255,255,255,0.06)"}`,color:a?c:"#555"});
-
-  return <div>
-    <div style={{marginBottom:14}}>
-      <div style={{fontSize:9,color:"#444",letterSpacing:1,fontWeight:600,marginBottom:6}}>TEAM CAPABILITY BY CATEGORY</div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:5}}>
-        {catSummary.map(r=>{const bc=r.pct>0.9?"#ff6b6b":r.pct>0.6?"#ffd700":"#4ade80",mc=r.mult>1.1?"#4ade80":r.mult>0.85?"#ffd700":"#ff6b6b";
-        return <div key={r.cat} style={{background:"rgba(0,0,0,0.2)",borderRadius:5,padding:"7px 9px",border:`1px solid ${CC[r.cat]}22`}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:2}}><span style={{fontSize:9,fontWeight:700,color:CC[r.cat]}}>{r.label}</span><span style={{fontSize:8,color:bc,fontWeight:600}}>{r.status}</span></div>
-          <div style={{display:"flex",gap:6,marginBottom:4,fontSize:7,color:"#444"}}><span>{r.count} tiles</span><span style={{color:mc}}>×{r.mult.toFixed(2)} efficiency</span></div>
-          <div style={{height:5,background:"rgba(255,255,255,0.04)",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",borderRadius:3,width:(r.pct*100)+"%",background:bc,transition:"width 0.4s"}}/></div>
-          <div style={{display:"flex",justifyContent:"space-between",marginTop:2,fontSize:7,color:"#333"}}><span>{Math.round(r.needed)}h needed</span><span style={{color:"#ffd700"}}>{Math.round(r.tE)}h exp / {Math.round(r.tC)}h max</span></div>
-        </div>;})}
-      </div>
-    </div>
-    <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:8}}>
-      <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{cats.map(cat=><button key={cat} onClick={()=>setFilterCat(cat)} style={sb(filterCat===cat,cat==="all"?"#888":CC[cat])}>{cat==="all"?"All":CAT_LABEL[cat]||cat}</button>)}</div>
-      <div style={{marginLeft:"auto",display:"flex",gap:4,alignItems:"center"}}><span style={{fontSize:8,color:"#444"}}>Sort:</span>{[["pph","Pts/hr"],["fast","Fastest"],["line","Line val"]].map(([k,l])=><button key={k} onClick={()=>setSortBy(k)} style={sb(sortBy===k,"#60a5fa")}>{l}</button>)}</div>
-    </div>
-    <div style={{background:"rgba(0,0,0,0.15)",borderRadius:5,overflow:"hidden",border:"1px solid rgba(255,255,255,0.04)"}}>
-      <div style={{display:"grid",gridTemplateColumns:"20px 1fr 55px 55px 55px 55px 70px",padding:"5px 8px",background:"rgba(255,255,255,0.025)",borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
-        {["#","Tile","Wall-clk","Pts/hr","Line+","Fits?","Best Next"].map((h,i)=><div key={i} style={{fontSize:7,color:"#444",fontWeight:600,textAlign:i>1?"center":"left"}}>{h}</div>)}
-      </div>
-      <div style={{maxHeight:340,overflowY:"auto"}}>
-        {filtered.map((tile,idx)=>{const pc=tile.pphFull>0.8?"#4ade80":tile.pphFull>0.4?"#ffd700":"#ff6b6b",fc=tile.fitsFloor?"#4ade80":tile.fitsExp?"#ffd700":"#ff6b6b",fl=tile.fitsFloor?"✓floor":tile.fitsExp?"~exp":"⚠tight";
-        return <div key={tile.id} style={{display:"grid",gridTemplateColumns:"20px 1fr 55px 55px 55px 55px 70px",padding:"6px 8px",borderBottom:"1px solid rgba(255,255,255,0.025)",background:idx%2===0?"rgba(255,255,255,0.005)":"transparent"}}
-          onMouseEnter={e=>e.currentTarget.style.background="rgba(255,215,0,0.03)"}
-          onMouseLeave={e=>e.currentTarget.style.background=idx%2===0?"rgba(255,255,255,0.005)":"transparent"}>
-          <div style={{fontSize:9,color:"#333"}}>{idx+1}</div>
-          <div><div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:5,height:5,borderRadius:1,background:CC[tile.cat],flexShrink:0}}/><span style={{fontSize:10,fontWeight:700,color:"#bbb"}}>{tile.name}</span></div><div style={{fontSize:7,color:"#333"}}>{CAT_LABEL[tile.cat]} · {modeLabel(tile.workMode || defaultWorkMode(tile))} · ×{tile.effSc.toFixed(1)}</div></div>
-          <div style={{textAlign:"center"}}><div style={{fontSize:10,fontWeight:700,color:"#aaa"}}>{tile.hoursToGold<1?"<1":Math.round(tile.hoursToGold)}h</div><div style={{fontSize:7,color:"#333"}}>{3-tile.dc} tasks</div></div>
-          <div style={{textAlign:"center"}}><div style={{fontSize:11,fontWeight:800,color:pc}}>{tile.pphFull.toFixed(2)}</div><div style={{fontSize:7,color:"#333"}}>pts/hr</div></div>
-          <div style={{textAlign:"center"}}><div style={{fontSize:10,fontWeight:700,color:tile.lineVal>0?"#60a5fa":"#333"}}>{tile.lineVal>0?"+"+Math.round(tile.lineVal):"—"}</div></div>
-          <div style={{textAlign:"center"}}><div style={{fontSize:9,fontWeight:700,color:fc}}>{fl}</div></div>
-          <div style={{paddingLeft:4}}>{tile.nextTask?<><div style={{fontSize:9,color:"#ffd700",fontWeight:600,lineHeight:1.2}}>⭐ {tile.nextTask.desc}</div><div style={{fontSize:7,color:"#444"}}>{tile.nextHours<1?"<1":tile.nextHours.toFixed(1)}h</div></>:<div style={{fontSize:8,color:"#444"}}>—</div>}</div>
-        </div>;})}
-      </div>
-    </div>
-    <div style={{marginTop:5,fontSize:7,color:"#333"}}>Wall-clk = wall-clock hrs (team-scaled by SECS capability). Fits = vs team player-hours for that category over the event.</div>
   </div>;
 }
 
@@ -1729,9 +1775,9 @@ export default function App(){
     
     return tiles.map(tile=>{
       const dc=tileTaskCounts[tile.id],tsDone=new Set(tile.tasks.filter(tk=>done.has(tk.id)).map(tk=>tk.id));
-      const rem=remS(tile,tsDone),rH=rem.reduce((s,t)=>s+t.estHours,0);
+      const rem=remS(tile,tsDone),rH=rem.reduce((s,t)=>s+taskDisplayHours(t),0);
       const effSc=tileScale(tile,tSz,teamCap),eH=rH/effSc;
-      const cheapest=rem.length>0?rem[0]:null,cheapH=cheapest?cheapest.estHours/effSc:Infinity;
+      const cheapest=rem.length>0?rem[0]:null,cheapH=cheapest?taskDisplayHours(cheapest)/effSc:Infinity;
       let lS=0,nL=[];
       LINES.filter(l=>l.tiles.includes(tile.id)).forEach(line=>{const og=line.tiles.filter(t=>t!==tile.id&&tileTaskCounts[t]>=3).length;if(og===4){lS+=200;nL.push({...line,need:1});}else if(og===3){lS+=30;nL.push({...line,need:2});}else if(og===2)lS+=5;});
       
@@ -1764,19 +1810,19 @@ export default function App(){
   const hlTiles=hlL?LINES.find(l=>l.name===hlL)?.tiles||[]:[];
   const tc=TEAM_COLORS[selectedTeam]||"#ffd700";
 
-  return <div style={{minHeight:"100vh",background:"#0b0e14",color:"#c8ccd4",fontFamily:"'JetBrains Mono','Fira Code','SF Mono',monospace",padding:14,boxSizing:"border-box"}}>
+  return <div className="app-root" style={{padding:14,boxSizing:"border-box"}}>
     <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
-    <div style={{textAlign:"center",marginBottom:8}}>
+    <div className="app-header" style={{textAlign:"center",marginBottom:8}}>
       <div style={{fontSize:8,letterSpacing:4,color:"#444",textTransform:"uppercase"}}>Old School RuneScape</div>
       <h1 style={{fontSize:22,fontWeight:900,margin:"2px 0",letterSpacing:2,background:"linear-gradient(90deg,#cd7f32,#ffd700,#cd7f32)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>BINGO OPTIMIZER</h1>
-      <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:10,marginTop:4}}>
+      <div className="app-header-actions" style={{display:"flex",justifyContent:"center",alignItems:"center",gap:10,marginTop:4}}>
         <Countdown/>
         <button onClick={clearAll} style={{fontSize:7,background:"rgba(255,255,255,0.02)",color:"#333",border:"1px solid rgba(255,255,255,0.04)",borderRadius:2,padding:"1px 6px",cursor:"pointer",fontFamily:"inherit"}}>clear wiki cache</button>
       </div>
     </div>
 
     <div style={{marginBottom:8}}>
-      <div style={{display:"flex",gap:4,justifyContent:"center",flexWrap:"wrap",marginBottom:6}}>
+      <div className="team-chip-grid" style={{display:"flex",gap:4,justifyContent:"center",flexWrap:"wrap",marginBottom:6}}>
         {Object.entries(TEAMS).map(([name,players])=>{
           const tc2=TEAM_COLORS[name]||"#ffd700";
           const avgSecs=Math.round(players.reduce((s,p)=>s+p.secs,0)/players.length);
@@ -1798,7 +1844,7 @@ export default function App(){
           </button>;
         })}
       </div>
-      <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap",padding:"4px 8px"}}>
+      <div className="app-controls-row" style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap",padding:"4px 8px"}}>
         <label style={{display:"flex",alignItems:"center",gap:4,fontSize:10,color:"#555"}}>Sort
           <select value={sort} onChange={e=>setSort(e.target.value)} style={{background:"#151921",color:"#ddd",border:"1px solid #2a2f3a",borderRadius:3,padding:"2px 4px",fontSize:10}}>
             <option value="smart">Smart</option><option value="fast">Cheapest</option><option value="value">Value</option><option value="line">Line</option>
@@ -1808,7 +1854,7 @@ export default function App(){
       </div>
     </div>
 
-    <div style={{display:"flex",gap:5,justifyContent:"center",flexWrap:"wrap",marginBottom:8}}>
+    <div className="kpi-row" style={{display:"flex",gap:5,justifyContent:"center",flexWrap:"wrap",marginBottom:8}}>
       {[{l:"Pts",v:st.total,s:st.tp+"+"+st.lp,c:"#ffd700"},{l:"Gold",v:st.g+"/25",s:"S:"+st.s+" B:"+st.b,c:"#ffd700"},{l:"Lines",v:st.ld+"/12",s:"+"+st.lp,c:"#60a5fa"},{l:"Rem hrs",v:Math.round(st.hl)+"h",s:"team-scaled",c:"#f472b6"}].map((s,i)=>(
         <div key={i} style={{background:"rgba(255,255,255,0.02)",borderRadius:4,padding:"5px 9px",border:"1px solid rgba(255,255,255,0.04)",textAlign:"center",minWidth:70}}>
           <div style={{fontSize:7,color:"#444",letterSpacing:1}}>{s.l}</div><div style={{fontSize:15,fontWeight:900,color:s.c}}>{s.v}</div><div style={{fontSize:7,color:"#333"}}>{s.s}</div>
@@ -1818,10 +1864,10 @@ export default function App(){
 
     <RosterPanel players={teamPlayers} teamCap={teamCap} enrichAll={enrichAll} enrichProgress={enrichProgress} tiles={tiles} wikiData={wikiData}/>
 
-    <div style={{display:"flex",gap:10,flexWrap:"wrap",justifyContent:"center",alignItems:"flex-start"}}>
-      <div style={{flexShrink:0}}>
+    <div className="app-main-grid" style={{display:"grid",gap:12,alignItems:"flex-start"}}>
+      <div className="board-pane">
         <div style={{fontSize:7,color:"#333",marginBottom:4}}>Task hours are raw; tile ~h is projected with scale mode + team capabilities (SOLO/RAID/MASS)</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:3,width:320}}>
+        <div className="board-grid" style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:3}}>
           {tiles.map(tile=>{const m=met.find(t=>t.id===tile.id),rk=pri.findIndex(t=>t.id===tile.id),iS=selT===tile.id,iH=hlTiles.includes(tile.id);
           const mode = tile.workMode || defaultWorkMode(tile);
           return <div key={tile.id} onClick={()=>{setSelT(tile.id===selT?null:tile.id);setEditing(false);}} style={{background:m.dc>=3?"rgba(255,215,0,0.07)":m.dc>=1?"rgba(205,127,50,0.04)":"rgba(255,255,255,0.01)",border:"2px solid "+(iS?"#ffd700":iH?"#60a5fa":m.dc>=3?"rgba(255,215,0,0.18)":"rgba(255,255,255,0.04)"),borderRadius:4,padding:"3px 2px",cursor:"pointer",textAlign:"center",minHeight:54,position:"relative",transition:"all 0.15s",transform:iS?"scale(1.05)":"scale(1)"}}>
@@ -1836,7 +1882,7 @@ export default function App(){
         </div>
       </div>
 
-      <div style={{flex:1,minWidth:240,maxWidth:420}}>
+      <div className="details-pane" style={{minWidth:0}}>
         {sel&&!editing&&<div style={{background:"rgba(255,255,255,0.02)",borderRadius:5,border:"1px solid rgba(255,215,0,0.1)",padding:8,marginBottom:8}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
             <div><div style={{display:"flex",alignItems:"center",gap:3}}><span style={{fontSize:7,padding:"1px 4px",borderRadius:2,background:CC[sel.cat],color:"#fff",fontWeight:700}}>{sel.cat}</span><span style={{fontSize:7,padding:"1px 4px",borderRadius:2,background:"rgba(96,165,250,0.12)",color:"#60a5fa",fontWeight:700}}>{sel.workMode || defaultWorkMode(sel)}</span><span style={{fontSize:13,fontWeight:800,color:"#ffd700"}}>#{sel.id} {sel.name}</span></div><p style={{fontSize:8,color:"#444",margin:"1px 0 0"}}>{sel.notes}</p></div>
@@ -1851,7 +1897,10 @@ export default function App(){
                 <div style={{display:"flex",alignItems:"center",gap:3}}>
                   <span style={{fontSize:6,color:"#888",background:"rgba(255,255,255,0.05)",padding:"0px 3px",borderRadius:1}}>{taskTypeLabel(tType)}</span>
                   {task.wikiEnriched&&<span style={{fontSize:6,color:task.wikiConfidence==="high"?"#4ade80":task.wikiConfidence==="medium"?"#ffd700":"#ff6b6b",background:"rgba(0,0,0,0.3)",padding:"0px 3px",borderRadius:1}}>🌐</span>}
-                  <span style={{fontSize:8,color:task.wikiEnriched?"#60a5fa":"#555"}}>{task.estHours}h raw</span>
+                  <span style={{fontSize:8,color:task.wikiEnriched?"#60a5fa":"#555"}}>
+                    {task.estHours}h raw
+                    {normalizeTaskType(task.type)==="kc" && taskTargetAmount(task)>0 ? ` · ${taskDisplayHours(task).toFixed(1)}h rem` : ""}
+                  </span>
                 </div>
               </div>
               <div style={{fontSize:8,color:"#444"}}>{task.notes}</div>
@@ -1895,19 +1944,18 @@ export default function App(){
       </div>
     </div>
 
-    <div style={{marginTop:18,background:"rgba(255,255,255,0.012)",borderRadius:6,border:"1px solid rgba(255,255,255,0.04)",overflow:"hidden"}}>
-      <div style={{display:"flex",borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
-        {[{id:"scenarios",label:"Scenarios",desc:"B/S/G compare"},{id:"line",label:"Line Planner",desc:"Bingo probability"},{id:"online",label:"Who's Online",desc:"Active priority"},{id:"roles",label:"Team Roles",desc:"Pts/hr by role"},{id:"strategy",label:"Strategy",desc:"Discord directive"},{id:"compare",label:"All Teams",desc:"Side-by-side"}].map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"8px 6px",cursor:"pointer",background:tab===t.id?"rgba(255,215,0,0.04)":"transparent",border:"none",borderBottom:tab===t.id?"2px solid #ffd700":"2px solid transparent",color:tab===t.id?"#ffd700":"#555",fontSize:10,fontWeight:tab===t.id?700:400}}>
+    <div className="tab-shell" style={{marginTop:18,background:"rgba(255,255,255,0.012)",borderRadius:6,border:"1px solid rgba(255,255,255,0.04)",overflow:"hidden"}}>
+      <div className="tab-nav" style={{display:"flex",borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+        {[{id:"scenarios",label:"Scenarios",desc:"B/S/G compare"},{id:"line",label:"Line Planner",desc:"Bingo probability"},{id:"online",label:"Who's Online",desc:"Active priority"},{id:"strategy",label:"Strategy",desc:"Discord directive"},{id:"compare",label:"All Teams",desc:"Side-by-side"}].map(t=>(
+          <button key={t.id} className="tab-btn" onClick={()=>setTab(t.id)} style={{cursor:"pointer",background:tab===t.id?"rgba(255,215,0,0.04)":"transparent",border:"none",borderBottom:tab===t.id?"2px solid #ffd700":"2px solid transparent",color:tab===t.id?"#ffd700":"#555",fontSize:10,fontWeight:tab===t.id?700:400}}>
             <div>{t.label}</div><div style={{fontSize:7,color:tab===t.id?"#666":"#333",marginTop:1}}>{t.desc}</div>
           </button>
         ))}
       </div>
-      <div style={{padding:14}}>
+      <div className="tab-content" style={{padding:14}}>
         {tab==="scenarios"&&<Scenarios done={done} tiles={tiles} teamPlayers={teamPlayers} teamCap={teamCap}/>}
         {tab==="line"&&<LinePlanner done={done} tiles={tiles} teamPlayers={teamPlayers} teamCap={teamCap}/>}
         {tab==="online"&&<WhosOnline done={done} tiles={tiles} teamPlayers={teamPlayers} teamCap={teamCap}/>}
-        {tab==="roles"&&<TeamRoles done={done} tiles={tiles} teamPlayers={teamPlayers} teamCap={teamCap}/>}
         {tab==="strategy"&&<StrategyCenter selectedTeam={selectedTeam} pri={pri} eventEndMs={EVENT_END.getTime()}/>}
         {tab==="compare"&&<TeamCompare/>}
       </div>
