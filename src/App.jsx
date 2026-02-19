@@ -727,230 +727,356 @@ function tileHoursForTarget(tile, targetMedal, doneTasks, effSc) {
 }
 
 function LinePlanner({done, tiles, teamPlayers, teamCap}) {
-  // Lines: rows 1-5 (tiles 1-5, 6-10, ...), cols 1-5 (tiles 1,6,11,16,21 etc)
-  const BOARD_LINES = useMemo(() => {
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [hoveredLine, setHoveredLine] = useState(null);
+  const [hoveredLine2, setHoveredLine2] = useState(null); // second key for pair hover
+  const [tileAssignments, setTileAssignments] = useState({}); // tileId → player count (ephemeral)
+
+  // ── Memos ──────────────────────────────────────────────────────────────────
+  const boardLines = useMemo(() => {
     const lines = [];
-    for (let r = 0; r < 5; r++) lines.push({name: `Row ${r+1}`, key:`r${r}`, tiles:[r*5+1,r*5+2,r*5+3,r*5+4,r*5+5]});
-    for (let c = 0; c < 5; c++) lines.push({name: `Col ${c+1}`, key:`c${c}`, tiles:[c+1,c+6,c+11,c+16,c+21]});
+    for (let r = 0; r < 5; r++) lines.push({name:`Row ${r+1}`, key:`r${r}`, tiles:[r*5+1,r*5+2,r*5+3,r*5+4,r*5+5]});
+    for (let c = 0; c < 5; c++) lines.push({name:`Col ${c+1}`, key:`c${c}`, tiles:[c+1,c+6,c+11,c+16,c+21]});
     return lines;
   }, []);
 
-  const [selLine, setSelLine] = useState('r0');
-  const [tileTargets, setTileTargets] = useState({}); // tileId -> 1|2|3
-  const [assignees, setAssignees] = useState({}); // tileId -> Set of playerNames
-  const [mode, setMode] = useState('fastest'); // fastest | safest | points
+  // tileId → count of done tasks
+  const tileTaskCounts = useMemo(() => {
+    const m = {};
+    tiles.forEach(t => { m[t.id] = t.tasks.filter(tk => done.has(tk.id)).length; });
+    return m;
+  }, [done, tiles]);
 
-  const currentLine = BOARD_LINES.find(l => l.key === selLine);
+  // tileId → war-room effective scale: assigned player count × cap, or 1 (raw) if unassigned
+  const tileWarRoomEffSc = useMemo(() => {
+    const m = {};
+    tiles.forEach(t => {
+      const assigned = tileAssignments[t.id];
+      m[t.id] = (assigned > 0) ? Math.max(assigned * (teamCap[t.cat] || 1.0), 0.01) : 1;
+    });
+    return m;
+  }, [tiles, tileAssignments, teamCap]);
 
-  // When line changes, reset tile targets to gold (3) for all tiles in new line
-  useEffect(() => {
-    if (!currentLine) return;
-    const t = {};
-    currentLine.tiles.forEach(id => { t[id] = 3; });
-    setTileTargets(t);
-    setAssignees({});
-  }, [selLine]);
+  // tileId → Set<taskId> of done tasks (required by pGTarget / tileHoursForTarget)
+  const tileDoneSets = useMemo(() => {
+    const m = {};
+    tiles.forEach(t => { m[t.id] = new Set(t.tasks.filter(tk => done.has(tk.id)).map(tk => tk.id)); });
+    return m;
+  }, [done, tiles]);
 
-  const doneTasks = useMemo(() => new Set(
-    tiles.flatMap(t => t.tasks.filter(tk => done.has(tk.id)).map(tk => tk.id))
-  ), [done, tiles]);
+  // Per-line stats sorted by hours to next bingo level (easiest first)
+  const lineOverviewStats = useMemo(() => {
+    return boardLines.map(line => {
+      const lineTiles = line.tiles.map(tid => tiles.find(t => t.id === tid)).filter(Boolean);
+      const tileMedalCounts = line.tiles.map(tid => tileTaskCounts[tid] || 0);
+      const bronzeCount = tileMedalCounts.filter(c => c >= 1).length;
+      const silverCount = tileMedalCounts.filter(c => c >= 2).length;
+      const goldCount   = tileMedalCounts.filter(c => c >= 3).length;
+      const isBronzeBingo = bronzeCount === 5;
+      const isSilverBingo = silverCount === 5;
+      const isGoldBingo   = goldCount   === 5;
 
-  // Compute per-tile stats for the selected line
-  const lineStats = useMemo(() => {
-    if (!currentLine) return [];
-    return currentLine.tiles.map(tid => {
-      const tile = tiles.find(t => t.id === tid);
-      if (!tile) return null;
-      const target = tileTargets[tid] || 3;
-      const tDone = new Set(tile.tasks.filter(tk => done.has(tk.id)).map(tk => tk.id));
-      const already = tile.tasks.filter(tk => done.has(tk.id)).length;
-      const need = Math.max(0, target - already);
+      const hoursForMedal = medal =>
+        lineTiles.reduce((s, tile) => s + tileHoursForTarget(tile, medal, tileDoneSets[tile.id], tileWarRoomEffSc[tile.id]), 0);
+      const hoursToBronze = hoursForMedal(1);
+      const hoursToSilver = hoursForMedal(2);
+      const hoursToGold   = hoursForMedal(3);
 
-      // Player assignment: use assigned players if any, else full team
-      const assigned = assignees[tid] ? teamPlayers.filter(p => assignees[tid].has(p.name)) : teamPlayers;
-      const activePlayers = assigned.length > 0 ? assigned : teamPlayers;
-      const assignedCap = teamCapability(activePlayers);
-      const effSc = effectiveScale(tile.cat, activePlayers.length, assignedCap);
+      let nextLevelHours, nextLevelLabel;
+      if (!isBronzeBingo)      { nextLevelHours = hoursToBronze; nextLevelLabel = 'bronze'; }
+      else if (!isSilverBingo) { nextLevelHours = hoursToSilver; nextLevelLabel = 'silver'; }
+      else if (!isGoldBingo)   { nextLevelHours = hoursToGold;   nextLevelLabel = 'gold'; }
+      else                     { nextLevelHours = 0;             nextLevelLabel = 'complete'; }
 
-      const expHours = tileHoursForTarget(tile, target, tDone, effSc);
-      // 90th pct dry: for drop tasks, 2.3× expected (90th pct of geometric); KC tasks are deterministic
-      const remaining = [...tile.tasks].filter(t => !tDone.has(t.id)).sort((a,b)=>a.estHours-b.estHours).slice(0,need);
-      const dryHours = remaining.reduce((s,t) => s + (t.type==='drop' ? t.estHours*2.3 : t.estHours) / effSc, 0);
+      const probAtEnd = medal =>
+        lineTiles.reduce((p, tile) => p * pGTarget(tile, medal, tileDoneSets[tile.id], EVENT_HOURS_WALL, tileWarRoomEffSc[tile.id]), 1);
+      const nextLevelProb = nextLevelLabel === 'complete' ? 1
+        : nextLevelLabel === 'bronze' ? probAtEnd(1)
+        : nextLevelLabel === 'silver' ? probAtEnd(2)
+        : probAtEnd(3);
 
-      const hasDropTask = remaining.some(t => t.type === 'drop');
-      const isBigDrop = dryHours > expHours * 1.8;
+      const hasUnassigned = line.tiles.some(tid => !(tileAssignments[tid] > 0));
+      return { ...line, tileMedalCounts, bronzeCount, silverCount, goldCount,
+        isBronzeBingo, isSilverBingo, isGoldBingo,
+        hoursToBronze, hoursToSilver, hoursToGold,
+        nextLevelHours, nextLevelLabel, nextLevelProb, hasUnassigned };
+    }).sort((a, b) => {
+      if (a.nextLevelLabel === 'complete' && b.nextLevelLabel !== 'complete') return 1;
+      if (b.nextLevelLabel === 'complete' && a.nextLevelLabel !== 'complete') return -1;
+      return a.nextLevelHours - b.nextLevelHours;
+    });
+  }, [boardLines, tiles, tileTaskCounts, tileWarRoomEffSc, tileDoneSets, tileAssignments]);
 
-      // Medal options
-      const opts = [1,2,3].map(m => ({
-        medal: m,
-        hours: tileHoursForTarget(tile, m, tDone, effSc),
-        done: already >= m
-      }));
+  // tileId → { bronze, silver, gold }: true if this tile completing that level would finish both its row AND col bingo
+  const lynchpinMap = useMemo(() => {
+    const map = {};
+    tiles.forEach(tile => {
+      const tid = tile.id;
+      const row = Math.floor((tid - 1) / 5);
+      const col = (tid - 1) % 5;
+      const rowLine = boardLines.find(l => l.key === `r${row}`);
+      const colLine = boardLines.find(l => l.key === `c${col}`);
+      if (!rowLine || !colLine) return;
+      const check = medal => {
+        if ((tileTaskCounts[tid] || 0) >= medal) return false;
+        const rowOk = rowLine.tiles.filter(id => id !== tid).every(id => (tileTaskCounts[id] || 0) >= medal);
+        const colOk = colLine.tiles.filter(id => id !== tid).every(id => (tileTaskCounts[id] || 0) >= medal);
+        return rowOk && colOk;
+      };
+      map[tid] = { bronze: check(1), silver: check(2), gold: check(3) };
+    });
+    return map;
+  }, [tiles, tileTaskCounts, boardLines]);
 
-      return {tile, tid, target, already, need, expHours, dryHours, effSc, hasDropTask, isBigDrop, remaining, opts, activePlayers};
-    }).filter(Boolean);
-  }, [currentLine, tiles, done, tileTargets, assignees, teamPlayers, teamCap]);
+  // Top-10 (row, col) pairs ranked by combined hours to complete both
+  const doubleBingoPairs = useMemo(() => {
+    const pairs = [];
+    for (let r = 0; r < 5; r++) {
+      for (let c = 0; c < 5; c++) {
+        const rowStat = lineOverviewStats.find(l => l.key === `r${r}`);
+        const colStat = lineOverviewStats.find(l => l.key === `c${c}`);
+        if (!rowStat || !colStat) continue;
+        if (rowStat.isGoldBingo && colStat.isGoldBingo) continue;
+        const targetMedal = (!rowStat.isBronzeBingo || !colStat.isBronzeBingo) ? 1
+          : (!rowStat.isSilverBingo || !colStat.isSilverBingo) ? 2 : 3;
+        const tid = r * 5 + c + 1;
+        const tile = tiles.find(t => t.id === tid);
+        if (!tile) continue;
+        const itHours = tileHoursForTarget(tile, targetMedal, tileDoneSets[tid], tileWarRoomEffSc[tid]);
+        const rowH = targetMedal === 1 ? rowStat.hoursToBronze : targetMedal === 2 ? rowStat.hoursToSilver : rowStat.hoursToGold;
+        const colH = targetMedal === 1 ? colStat.hoursToBronze : targetMedal === 2 ? colStat.hoursToSilver : colStat.hoursToGold;
+        const combinedHours = Math.max(0, rowH + colH - itHours);
+        const rowDone = targetMedal === 1 ? rowStat.isBronzeBingo : targetMedal === 2 ? rowStat.isSilverBingo : rowStat.isGoldBingo;
+        const colDone = targetMedal === 1 ? colStat.isBronzeBingo : targetMedal === 2 ? colStat.isSilverBingo : colStat.isGoldBingo;
+        const pointsUnlocked = ((rowDone ? 0 : 1) + (colDone ? 0 : 1)) * 15;
+        pairs.push({ rowKey:`r${r}`, colKey:`c${c}`, rowLine:rowStat, colLine:colStat,
+          intersectionTileId:tid, targetMedal, combinedHours, pointsUnlocked });
+      }
+    }
+    return pairs.sort((a, b) => a.combinedHours - b.combinedHours).slice(0, 10);
+  }, [lineOverviewStats, tiles, tileWarRoomEffSc, tileDoneSets]);
 
-  // Joint probability of completing all tiles at their targets
-  const jointProb = useCallback((hours) => {
-    if (!lineStats.length) return 0;
-    return lineStats.reduce((p, ls) => {
-      const tDone = new Set(ls.tile.tasks.filter(tk => done.has(tk.id)).map(tk => tk.id));
-      return p * pGTarget(ls.tile, ls.target, tDone, hours, ls.effSc);
-    }, 1);
-  }, [lineStats, done]);
+  // ── Gutter data: grid-order (not sorted) + rank within rows/cols ───────────
+  const rowGutterStats = useMemo(() =>
+    [0,1,2,3,4].map(r => lineOverviewStats.find(l => l.key === `r${r}`)),
+  [lineOverviewStats]);
+  const colGutterStats = useMemo(() =>
+    [0,1,2,3,4].map(c => lineOverviewStats.find(l => l.key === `c${c}`)),
+  [lineOverviewStats]);
+  const rowRank = useMemo(() => {
+    const sorted = [...rowGutterStats].filter(Boolean).sort((a,b) => a.nextLevelHours - b.nextLevelHours);
+    return Object.fromEntries(sorted.map((s,i) => [s.key, i+1]));
+  }, [rowGutterStats]);
+  const colRank = useMemo(() => {
+    const sorted = [...colGutterStats].filter(Boolean).sort((a,b) => a.nextLevelHours - b.nextLevelHours);
+    return Object.fromEntries(sorted.map((s,i) => [s.key, i+1]));
+  }, [colGutterStats]);
 
-  const totalExp = lineStats.reduce((s,l) => s+l.expHours, 0);
-  const totalDry = lineStats.reduce((s,l) => s+l.dryHours, 0);
-  const tE = teamPlayers.reduce((s,p)=>s+playerEventHours(p.hours,'expected'),0);
-  const tF = teamPlayers.reduce((s,p)=>s+playerEventHours(p.hours,'floor'),0);
-  const bottleneck = lineStats.length ? lineStats.reduce((a,b)=>a.expHours>b.expHours?a:b) : null;
-  const fragile = lineStats.filter(l => l.isBigDrop);
+  // Tiles highlighted by hovered line(s)
+  const hovTiles = useMemo(() => new Set([
+    ...(boardLines.find(l => l.key === hoveredLine)?.tiles  || []),
+    ...(boardLines.find(l => l.key === hoveredLine2)?.tiles || []),
+  ]), [boardLines, hoveredLine, hoveredLine2]);
 
-  // Already-completed tiles in this line
-  const lineComplete = lineStats.filter(l => l.already >= l.target).length;
-  const lineBingo = lineStats.length > 0 && lineStats.every(l => l.already >= 1); // any bronze = bingo entry
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  const mColor  = m => m === 3 ? '#ffd700' : m === 2 ? '#c0c0c0' : '#cd7f32';
+  const mLabel  = m => m === 3 ? 'Gold'    : m === 2 ? 'Silver'  : 'Bronze';
+  // Gutter cell color based on event-end probability for next level
+  const diffColor = stat => !stat || stat.nextLevelLabel === 'complete' ? '#4ade80'
+    : stat.nextLevelProb > 0.7 ? '#4ade80' : stat.nextLevelProb > 0.35 ? '#ffd700' : '#ff6b6b';
 
-  const timepoints = [20,40,60,80,120,168,Math.round(EVENT_HOURS_WALL)];
+  // ── Inner components (closures over state + memos) ─────────────────────────
+  function MedalBadge({level}) {
+    const color = mColor(level);
+    const lbl = level === 3 ? 'G' : level === 2 ? 'S' : 'B';
+    return <span style={{fontSize:7,padding:"0 4px",borderRadius:2,background:`${color}22`,border:`1px solid ${color}55`,color,fontWeight:700}}>{lbl}</span>;
+  }
 
-  const medalColor = m => m===3?'#ffd700':m===2?'#c0c0c0':'#cd7f32';
-  const medalLabel = m => m===3?'G':m===2?'S':'B';
-  const sb = (a,c) => ({fontSize:9,padding:"2px 8px",borderRadius:3,cursor:"pointer",fontWeight:a?700:400,background:a?`${c}22`:"rgba(255,255,255,0.02)",border:`1px solid ${a?c+"55":"rgba(255,255,255,0.05)"}`,color:a?c:"#555",fontFamily:"inherit"});
-
-  return <div>
-    {/* Line selector */}
-    <div style={{marginBottom:10}}>
-      <div style={{fontSize:8,color:"#444",letterSpacing:1,fontWeight:600,marginBottom:5}}>SELECT LINE</div>
-      <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
-        {BOARD_LINES.map(line => {
-          const comp = line.tiles.filter(tid => {
-            const t = tiles.find(x=>x.id===tid);
-            return t && t.tasks.filter(tk=>done.has(tk.id)).length >= 1;
-          }).length;
-          const full = line.tiles.filter(tid => {
-            const t = tiles.find(x=>x.id===tid);
-            return t && t.tasks.filter(tk=>done.has(tk.id)).length >= 3;
-          }).length;
-          const isSel = selLine === line.key;
-          return <button key={line.key} onClick={()=>setSelLine(line.key)} style={{...sb(isSel,'#ffd700'),position:'relative',paddingBottom:14}}>
-            <div>{line.name}</div>
-            <div style={{fontSize:6,color:isSel?'#ffd700aa':'#333',marginTop:1}}>{comp}/5 started · {full}/5 gold</div>
-          </button>;
-        })}
+  // Top gutter: one cell per column
+  function ColHeader({stat}) {
+    if (!stat) return <div/>;
+    const isHov = hoveredLine === stat.key || hoveredLine2 === stat.key;
+    const dc = diffColor(stat);
+    const rank = colRank[stat.key];
+    return <div
+      onMouseEnter={() => { setHoveredLine(stat.key); setHoveredLine2(null); }}
+      onMouseLeave={() => { setHoveredLine(null); setHoveredLine2(null); }}
+      style={{padding:"6px 4px",borderRadius:4,textAlign:"center",cursor:"default",
+        background:isHov?`${dc}0d`:"rgba(255,255,255,0.015)",
+        border:`1px solid ${isHov?dc+"55":dc+"22"}`,
+        transition:"border-color 0.15s,background 0.15s"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:3,marginBottom:2}}>
+        <span style={{fontSize:6,color:"#333",fontWeight:700,background:"rgba(255,255,255,0.04)",borderRadius:2,padding:"0 3px"}}>#{rank}</span>
+        <span style={{fontSize:8,fontWeight:700,color:"#bbb"}}>{stat.name}</span>
       </div>
-    </div>
-
-    {currentLine && <div>
-      {/* Summary bar */}
-      <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10,padding:"7px 10px",background:"rgba(0,0,0,0.2)",borderRadius:5,border:"1px solid rgba(255,215,0,0.08)"}}>
-        {[
-          {l:"Line",v:currentLine.name,c:"#ffd700"},
-          {l:"Exp total",v:Math.round(totalExp)+"h",c:totalExp<=tE?"#4ade80":"#ff6b6b"},
-          {l:"Dry (90%)",v:Math.round(totalDry)+"h",c:totalDry<=tE?"#ffd700":"#ff8c00"},
-          {l:"Fits?",v:totalExp<=tF?"✓ floor":totalExp<=tE?"✓ exp":"⚠ tight",c:totalExp<=tF?"#4ade80":totalExp<=tE?"#ffd700":"#ff6b6b"},
-          {l:"P(all) @ end",v:(jointProb(EVENT_HOURS_WALL)*100).toFixed(0)+"%",c:jointProb(EVENT_HOURS_WALL)>0.7?"#4ade80":jointProb(EVENT_HOURS_WALL)>0.4?"#ffd700":"#ff6b6b"},
-          {l:"Tiles done",v:`${lineComplete}/${lineStats.length}`,c:"#aaa"},
-        ].map((s,i)=><div key={i} style={{textAlign:"center",minWidth:60}}>
-          <div style={{fontSize:7,color:"#444"}}>{s.l}</div>
-          <div style={{fontSize:11,fontWeight:800,color:s.c}}>{s.v}</div>
-        </div>)}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:3,lineHeight:1}}>
+        <span style={{fontSize:12,fontWeight:800,color:dc}}>
+          {stat.nextLevelLabel==='complete'?'✓':Math.round(stat.nextLevelHours)+'h'}
+        </span>
+        {stat.hasUnassigned && stat.nextLevelLabel!=='complete' && <span title="Some tiles unassigned — hours include raw estimates" style={{fontSize:8,color:"#f59e0b"}}>⚠</span>}
       </div>
+      {stat.nextLevelLabel !== 'complete' && <div style={{fontSize:7,color:dc,opacity:0.75,marginTop:1}}>{(stat.nextLevelProb*100).toFixed(0)}%</div>}
+      <div style={{display:"flex",gap:2,justifyContent:"center",marginTop:4,flexWrap:"wrap"}}>
+        {stat.isBronzeBingo && <MedalBadge level={1}/>}
+        {stat.isSilverBingo && <MedalBadge level={2}/>}
+        {stat.isGoldBingo   && <MedalBadge level={3}/>}
+      </div>
+    </div>;
+  }
 
-      {/* Warnings */}
-      {bottleneck && <div style={{fontSize:8,color:"#ff8c00",marginBottom:6,padding:"4px 8px",background:"rgba(255,140,0,0.06)",borderRadius:3,border:"1px solid rgba(255,140,0,0.15)"}}>
-        ⚠ Bottleneck: <b>{bottleneck.tile.name}</b> ({Math.round(bottleneck.expHours)}h expected)
-        {fragile.length>0&&<span style={{marginLeft:8,color:"#ff6b6b"}}>💀 High-variance: {fragile.map(f=>f.tile.name).join(", ")}</span>}
-      </div>}
+  // Left gutter: one cell per row
+  function RowHeader({stat}) {
+    if (!stat) return <div/>;
+    const isHov = hoveredLine === stat.key || hoveredLine2 === stat.key;
+    const dc = diffColor(stat);
+    const rank = rowRank[stat.key];
+    return <div
+      onMouseEnter={() => { setHoveredLine(stat.key); setHoveredLine2(null); }}
+      onMouseLeave={() => { setHoveredLine(null); setHoveredLine2(null); }}
+      style={{padding:"5px 6px",borderRadius:4,cursor:"default",display:"flex",flexDirection:"column",justifyContent:"center",gap:2,
+        background:isHov?`${dc}0d`:"rgba(255,255,255,0.015)",
+        border:`1px solid ${isHov?dc+"55":dc+"22"}`,
+        transition:"border-color 0.15s,background 0.15s"}}>
+      <div style={{display:"flex",alignItems:"center",gap:3}}>
+        <span style={{fontSize:6,color:"#333",fontWeight:700,background:"rgba(255,255,255,0.04)",borderRadius:2,padding:"0 3px",flexShrink:0}}>#{rank}</span>
+        <span style={{fontSize:8,fontWeight:700,color:"#bbb",whiteSpace:"nowrap"}}>{stat.name}</span>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:3,lineHeight:1}}>
+        <span style={{fontSize:13,fontWeight:800,color:dc}}>
+          {stat.nextLevelLabel==='complete'?'✓':Math.round(stat.nextLevelHours)+'h'}
+        </span>
+        {stat.hasUnassigned && stat.nextLevelLabel!=='complete' && <span title="Some tiles unassigned — hours include raw estimates" style={{fontSize:8,color:"#f59e0b"}}>⚠</span>}
+      </div>
+      {stat.nextLevelLabel !== 'complete' && <div style={{fontSize:7,color:dc,opacity:0.75}}>{(stat.nextLevelProb*100).toFixed(0)}%</div>}
+      <div style={{display:"flex",gap:2,flexWrap:"wrap"}}>
+        {stat.isBronzeBingo && <MedalBadge level={1}/>}
+        {stat.isSilverBingo && <MedalBadge level={2}/>}
+        {stat.isGoldBingo   && <MedalBadge level={3}/>}
+      </div>
+    </div>;
+  }
 
-      {/* Per-tile breakdown */}
-      <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:12}}>
-        {lineStats.map(ls => {
-          const tDone = new Set(ls.tile.tasks.filter(tk=>done.has(tk.id)).map(tk=>tk.id));
-          const isDone = ls.already >= ls.target;
-          const isBottleneck = bottleneck?.tid === ls.tid;
-          // Capable players for this tile's category
-          const capable = teamPlayers.filter(p => {
-            if(ls.tile.cat==='raids') return (p.tob+p.cox+p.toa)>150||(p.inferno+p.colo)>0;
-            if(ls.tile.cat==='slayer') return p.slayer>=80;
-            if(ls.tile.cat==='pvm') return p.combat>=110;
-            return true;
-          }).sort((a,b)=>b.secs-a.secs);
-          const curAssigned = assignees[ls.tid] || new Set();
-          const togglePlayer = (name) => setAssignees(prev => {
-            const cur = new Set(prev[ls.tid]||[]);
-            if(cur.has(name)) cur.delete(name); else cur.add(name);
-            return {...prev, [ls.tid]: cur};
-          });
+  // Individual tile cell (sits in the grid interior)
+  function TileCell({tile}) {
+    const count = tileTaskCounts[tile.id] || 0;
+    const lp = lynchpinMap[tile.id] || {};
+    const isHl = hovTiles.has(tile.id);
+    const assigned = tileAssignments[tile.id] || 0; // 0 = unassigned
+    const isAssigned = assigned > 0;
+    const bg = count>=3?"rgba(255,215,0,0.10)":count>=2?"rgba(192,192,192,0.08)":count>=1?"rgba(205,127,50,0.07)":"rgba(255,255,255,0.015)";
+    const bc = isHl?"rgba(96,165,250,0.6)":count>=3?"rgba(255,215,0,0.2)":"rgba(255,255,255,0.04)";
+    const bw = isHl ? "2px" : "1px";
+    // Use war-room effSc (raw=1 when unassigned, scaled when assigned)
+    const nextH = count < 3 ? tileHoursForTarget(tile, count+1, tileDoneSets[tile.id], tileWarRoomEffSc[tile.id]) : 0;
+    const lpLbl = lp.gold?"G":lp.silver?"S":lp.bronze?"B":null;
+    const lpCol = lp.gold?"#ffd700":lp.silver?"#c0c0c0":"#cd7f32";
+    const mColor = count===0?"#cd7f32":count===1?"#c0c0c0":"#ffd700";
+    const mBg = count===0?"rgba(205,127,50,0.15)":count===1?"rgba(192,192,192,0.12)":"rgba(255,215,0,0.12)";
+    const mBorder = count===0?"rgba(205,127,50,0.35)":count===1?"rgba(192,192,192,0.3)":"rgba(255,215,0,0.3)";
+    const mLabel = count===0?"Bronze":count===1?"Silver":"Gold";
+    const btnStyle = {fontSize:8,fontWeight:700,width:11,height:11,borderRadius:2,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.05)",color:"#888",cursor:"pointer",lineHeight:"11px",padding:0,display:"flex",alignItems:"center",justifyContent:"center"};
+    return <div style={{background:bg,border:`${bw} solid ${bc}`,borderRadius:4,padding:"4px 3px",textAlign:"center",position:"relative",transition:"border-color 0.15s,background 0.15s",opacity:isAssigned?1:0.5}}>
+      <div style={{position:"absolute",top:2,left:2,width:3,height:3,borderRadius:"50%",background:CC[tile.cat]}}/>
+      {lpLbl && <div style={{position:"absolute",top:1,right:2,fontSize:6,color:lpCol,fontWeight:900}}>⚡{lpLbl}</div>}
+      <div style={{fontSize:6,color:"#444",fontWeight:600,marginTop:2}}>#{tile.id}</div>
+      <div style={{fontSize:6,fontWeight:700,color:count>=3?"#ffd700":"#777",lineHeight:1.1,margin:"2px 0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tile.name}</div>
+      <div style={{display:"flex",gap:2,justifyContent:"center",margin:"2px 0"}}>
+        {[0,1,2].map(i => <div key={i} style={{width:5,height:5,borderRadius:"50%",background:count>i?(i===0?"#cd7f32":i===1?"#c0c0c0":"#ffd700"):"rgba(255,255,255,0.07)"}}/>)}
+      </div>
+      {/* +/- player count controls */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:2,margin:"2px 0"}}>
+        <button style={btnStyle} onClick={e => { e.stopPropagation(); setTileAssignments(p => { const c=p[tile.id]||0; if(c<=1){const n={...p};delete n[tile.id];return n;} return {...p,[tile.id]:c-1}; }); }}>−</button>
+        <span style={{fontSize:7,fontWeight:700,color:isAssigned?"#60a5fa":"#333",minWidth:14}}>{isAssigned?`${assigned}p`:"—"}</span>
+        <button style={btnStyle} onClick={e => { e.stopPropagation(); setTileAssignments(p => ({...p,[tile.id]:(p[tile.id]||0)+1})); }}>+</button>
+      </div>
+      {count>=3
+        ? <div style={{fontSize:6,color:"#ffd700",fontWeight:700}}>DONE</div>
+        : <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:2,marginTop:1}}>
+            <span style={{fontSize:6,fontWeight:600,color:"#bbb"}}>~{Math.round(nextH)}h</span>
+            <span style={{fontSize:5,fontWeight:700,padding:"0 3px",borderRadius:2,lineHeight:"10px",color:mColor,background:mBg,border:`1px solid ${mBorder}`}}>
+              {isAssigned ? mLabel : "raw"}
+            </span>
+          </div>
+      }
+    </div>;
+  }
 
-          return <div key={ls.tid} style={{background:isDone?"rgba(74,222,128,0.04)":isBottleneck?"rgba(255,140,0,0.04)":"rgba(255,255,255,0.01)",borderRadius:5,border:`1px solid ${isDone?"rgba(74,222,128,0.12)":isBottleneck?"rgba(255,140,0,0.2)":"rgba(255,255,255,0.04)"}`,padding:"7px 9px"}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,flexWrap:"wrap"}}>
-              <div style={{width:5,height:5,borderRadius:1,background:CC[ls.tile.cat],flexShrink:0}}/>
-              <span style={{fontSize:10,fontWeight:700,color:isDone?"#4ade80":"#bbb"}}>
-                {isDone?"✓ ":""}{ls.tile.name}
-              </span>
-              <span style={{fontSize:8,color:"#444"}}>#{ls.tid}</span>
-              {isBottleneck&&<span style={{fontSize:7,color:"#ff8c00",background:"rgba(255,140,0,0.1)",padding:"0 4px",borderRadius:2}}>BOTTLENECK</span>}
-              {ls.isBigDrop&&<span style={{fontSize:7,color:"#ff6b6b",background:"rgba(255,107,107,0.1)",padding:"0 4px",borderRadius:2}}>HIGH VAR</span>}
-              <div style={{marginLeft:"auto",display:"flex",gap:3}}>
-                {ls.opts.map(o=><button key={o.medal} onClick={()=>setTileTargets(p=>({...p,[ls.tid]:o.medal}))} disabled={o.done} style={{fontSize:8,padding:"1px 6px",borderRadius:2,cursor:o.done?"default":"pointer",fontWeight:ls.target===o.medal?800:400,background:ls.target===o.medal?`${medalColor(o.medal)}22`:"rgba(255,255,255,0.02)",border:`1px solid ${ls.target===o.medal?medalColor(o.medal)+"55":"rgba(255,255,255,0.05)"}`,color:o.done?"#444":medalColor(o.medal),fontFamily:"inherit",opacity:o.done?0.4:1}}>
-                  {medalLabel(o.medal)} {o.done?"✓":Math.round(o.hours)+"h"}
-                </button>)}
-              </div>
+  // Horizontal strip of top double-bingo pair cards below the grid
+  function PairStrip() {
+    if (!doubleBingoPairs.length) return null;
+    return <div style={{marginTop:14}}>
+      <div style={{fontSize:8,color:"#444",letterSpacing:1,fontWeight:600,marginBottom:6}}>TOP DOUBLE BINGO OPPORTUNITIES — HOVER TO HIGHLIGHT</div>
+      <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+        {doubleBingoPairs.slice(0,6).map((pair, idx) => {
+          const isHl = hoveredLine === pair.rowKey && hoveredLine2 === pair.colKey;
+          const intTile = tiles.find(t => t.id === pair.intersectionTileId);
+          return <div key={`${pair.rowKey}-${pair.colKey}`}
+            onMouseEnter={() => { setHoveredLine(pair.rowKey); setHoveredLine2(pair.colKey); }}
+            onMouseLeave={() => { setHoveredLine(null); setHoveredLine2(null); }}
+            style={{display:"flex",flexDirection:"column",gap:2,padding:"6px 8px",borderRadius:4,cursor:"default",minWidth:115,
+              background:isHl?"rgba(96,165,250,0.06)":"rgba(255,255,255,0.02)",
+              border:`1px solid ${isHl?"rgba(96,165,250,0.3)":"rgba(255,255,255,0.06)"}`,
+              transition:"background 0.1s,border-color 0.1s"}}>
+            <div style={{display:"flex",alignItems:"center",gap:4}}>
+              <span style={{fontSize:7,fontWeight:900,borderRadius:2,padding:"0 3px",
+                background:idx===0?"rgba(255,51,51,0.12)":idx<3?"rgba(255,136,0,0.08)":"rgba(255,255,255,0.03)",
+                color:idx===0?"#ff5555":idx<3?"#ff8c00":"#555"}}>#{idx+1}</span>
+              <span style={{fontSize:9,fontWeight:700,color:"#bbb"}}>{pair.rowLine.name} × {pair.colLine.name}</span>
             </div>
-
-            {!isDone && <div style={{display:"flex",gap:8,fontSize:8,color:"#555",marginBottom:4}}>
-              <span>Exp: <b style={{color:"#ffd700"}}>{Math.round(ls.expHours)}h</b></span>
-              <span>Dry: <b style={{color:"#ff8c00"}}>{Math.round(ls.dryHours)}h</b></span>
-              <span style={{color:"#444"}}>×{ls.effSc.toFixed(1)} scale · {ls.need} task{ls.need!==1?"s":""} needed</span>
-              {ls.remaining.slice(0,ls.need).map(t=><span key={t.id} style={{color:t.wikiEnriched?"#60a5fa":"#555"}}>
-                {t.wikiEnriched?"🌐":""}{t.desc} ({t.estHours.toFixed(1)}h)
-              </span>)}
-            </div>}
-
-            {/* Player assignment */}
-            {!isDone && <div>
-              <div style={{fontSize:7,color:"#333",marginBottom:2}}>Assign players ({curAssigned.size>0?curAssigned.size+" selected":"all team"}):</div>
-              <div style={{display:"flex",gap:2,flexWrap:"wrap"}}>
-                {capable.slice(0,12).map(p=>{
-                  const isSel=curAssigned.has(p.name);
-                  const cap=deriveCapability(p);
-                  const capVal=ls.tile.cat==='raids'?cap.raidPower:ls.tile.cat==='pvm'?cap.pvmPower:ls.tile.cat==='slayer'?cap.slayerPower:cap.skillPower;
-                  const cc=capVal>1.1?"#4ade80":capVal>0.8?"#ffd700":"#ff6b6b";
-                  return <button key={p.name} onClick={()=>togglePlayer(p.name)} style={{fontSize:7,padding:"1px 5px",borderRadius:2,cursor:"pointer",background:isSel?"rgba(96,165,250,0.15)":"rgba(255,255,255,0.02)",border:`1px solid ${isSel?"#60a5fa55":"rgba(255,255,255,0.04)"}`,color:isSel?"#60a5fa":"#555",fontFamily:"inherit",whiteSpace:"nowrap"}}>
-                    <span style={{color:cc}}>●</span> {p.name.split(" ")[0]}
-                  </button>;
-                })}
-                {capable.length>12&&<span style={{fontSize:7,color:"#333",alignSelf:"center"}}>+{capable.length-12} more</span>}
-                {curAssigned.size>0&&<button onClick={()=>setAssignees(p=>({...p,[ls.tid]:new Set()}))} style={{fontSize:7,padding:"1px 5px",borderRadius:2,cursor:"pointer",background:"rgba(255,107,107,0.06)",border:"1px solid rgba(255,107,107,0.15)",color:"#ff6b6b",fontFamily:"inherit"}}>clear</button>}
-              </div>
-            </div>}
+            <div style={{fontSize:7,color:"#444"}}>⚡ <span style={{color:CC[intTile?.cat||"pvm"]}}>{intTile?.name}</span></div>
+            <div style={{display:"flex",gap:6,alignItems:"center",marginTop:1}}>
+              <span style={{fontSize:11,fontWeight:800,color:"#ffd700"}}>{Math.round(pair.combinedHours)}h</span>
+              <span style={{fontSize:9,fontWeight:700,color:"#ffd700",background:"rgba(255,215,0,0.08)",borderRadius:2,padding:"0 4px"}}>+{pair.pointsUnlocked}pts</span>
+            </div>
           </div>;
         })}
       </div>
+    </div>;
+  }
 
-      {/* Joint probability over time */}
-      <div style={{background:"rgba(0,0,0,0.15)",borderRadius:5,padding:"8px 10px",border:"1px solid rgba(255,255,255,0.04)"}}>
-        <div style={{fontSize:8,color:"#444",letterSpacing:1,fontWeight:600,marginBottom:6}}>P(COMPLETE ALL TILES) OVER TIME</div>
-        <div style={{display:"flex",flexDirection:"column",gap:2}}>
-          {timepoints.map(h => {
-            const p = jointProb(h);
-            const isEnd = h === Math.round(EVENT_HOURS_WALL);
-            return <div key={h} style={{display:"flex",alignItems:"center",gap:6}}>
-              <div style={{width:28,fontSize:8,color:isEnd?"#ffd700":"#555",textAlign:"right",fontWeight:isEnd?700:400,flexShrink:0}}>{isEnd?"END":h+"h"}</div>
-              <div style={{flex:1,height:14,background:"rgba(255,255,255,0.03)",borderRadius:2,overflow:"hidden",position:"relative"}}>
-                <div style={{position:"absolute",left:0,top:0,height:"100%",width:(p*100)+"%",background:p>0.7?"rgba(74,222,128,0.4)":p>0.4?"rgba(255,215,0,0.4)":"rgba(255,107,107,0.4)",borderRadius:2,transition:"width 0.4s"}}/>
-                <div style={{position:"absolute",right:4,top:0,height:"100%",display:"flex",alignItems:"center",fontSize:8,fontWeight:700,color:p>0.7?"#4ade80":p>0.4?"#ffd700":"#ff6b6b"}}>{(p*100).toFixed(0)}%</div>
-              </div>
-            </div>;
+  // ── Layout: 6-column CSS grid ──────────────────────────────────────────────
+  // Col 0 = row headers, Cols 1-5 = tile columns; Row 0 = col headers, Rows 1-5 = tile rows
+  const tiles25 = useMemo(() => [...tiles].sort((a,b) => a.id - b.id), [tiles]);
+
+  // Assignment summary: total players assigned, tiles with assignments, unassigned pool
+  const assignedTileCount = Object.keys(tileAssignments).filter(k => tileAssignments[k] > 0).length;
+  const totalAssigned = Object.values(tileAssignments).reduce((s,v) => s + (v||0), 0);
+  const unassignedPool = Math.max(0, teamPlayers.length - totalAssigned);
+
+  return <div>
+    {/* War-room assignment summary */}
+    <div style={{display:"flex",gap:12,alignItems:"center",marginBottom:6,padding:"5px 8px",borderRadius:4,background:"rgba(96,165,250,0.05)",border:"1px solid rgba(96,165,250,0.12)",fontSize:8,flexWrap:"wrap"}}>
+      <span style={{color:"#60a5fa",fontWeight:700}}>WAR ROOM</span>
+      <span style={{color:"#888"}}>Assigned: <span style={{color:"#e2e8f0",fontWeight:700}}>{totalAssigned}p</span> across <span style={{color:"#e2e8f0",fontWeight:700}}>{assignedTileCount}</span> tiles</span>
+      <span style={{color:"#888"}}>Team: <span style={{color:"#e2e8f0",fontWeight:700}}>{teamPlayers.length}p</span></span>
+      <span style={{color:"#888"}}>Unassigned pool: <span style={{color:unassignedPool<0?"#f87171":"#e2e8f0",fontWeight:700}}>{unassignedPool}p</span></span>
+      {assignedTileCount > 0 && <button onClick={() => setTileAssignments({})} style={{fontSize:7,color:"#666",background:"none",border:"1px solid rgba(255,255,255,0.08)",borderRadius:2,cursor:"pointer",padding:"1px 5px"}}>Clear all</button>}
+      <span style={{color:"#444",fontSize:7,marginLeft:"auto"}}>+/− assigns players per tile · row/col totals use assigned counts (⚠ = raw for unassigned tiles) · resets on refresh</span>
+    </div>
+    {/* Legend */}
+    <div style={{display:"flex",gap:10,marginBottom:8,fontSize:7,color:"#444",flexWrap:"wrap"}}>
+      {[{c:"#4ade80",l:"Easy (P>70%)"},{c:"#ffd700",l:"Moderate"},{c:"#ff6b6b",l:"Hard (P<35%)"},{c:"#60a5fa",l:"Highlighted"}].map(({c,l})=><span key={l}><span style={{color:c}}>■</span> {l}</span>)}
+      <span style={{marginLeft:4}}>⚡ Lynchpin</span>
+    </div>
+
+    <div style={{display:"grid",gridTemplateColumns:"88px repeat(5,1fr)",gap:4}}>
+      {/* Corner */}
+      <div style={{borderRadius:4,border:"1px solid rgba(255,255,255,0.04)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:6,color:"#222",fontWeight:600,letterSpacing:1}}>BINGO</div>
+      {/* Col headers */}
+      {colGutterStats.map((stat,i) => <ColHeader key={stat?.key||i} stat={stat}/>)}
+      {/* Rows: [RowHeader, 5×TileCell] */}
+      {rowGutterStats.map((rowStat, r) =>
+        <React.Fragment key={rowStat?.key||r}>
+          <RowHeader stat={rowStat}/>
+          {(rowStat?.tiles||[]).map(tid => {
+            const tile = tiles25.find(t => t.id === tid);
+            return tile ? <TileCell key={tid} tile={tile}/> : <div key={tid}/>;
           })}
-        </div>
-        {totalExp > 0 && <div style={{marginTop:6,display:"flex",gap:10,fontSize:7,color:"#444"}}>
-          <span>Expected hrs: <b style={{color:"#ffd700"}}>{Math.round(totalExp)}h</b></span>
-          <span>Dry scenario: <b style={{color:"#ff8c00"}}>{Math.round(totalDry)}h</b></span>
-          <span>Team exp: <b style={{color:"#4ade80"}}>{Math.round(tE)}h</b></span>
-        </div>}
-      </div>
-    </div>}
+        </React.Fragment>
+      )}
+    </div>
+
+    <PairStrip/>
   </div>;
 }
 
@@ -1385,6 +1511,7 @@ export default function App(){
 
     <div style={{display:"flex",gap:10,flexWrap:"wrap",justifyContent:"center",alignItems:"flex-start"}}>
       <div style={{flexShrink:0}}>
+        <div style={{fontSize:7,color:"#333",marginBottom:4}}>Tile hours = total remaining ÷ team scale</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:3,width:320}}>
           {tiles.map(tile=>{const m=met.find(t=>t.id===tile.id),rk=pri.findIndex(t=>t.id===tile.id),iS=selT===tile.id,iH=hlTiles.includes(tile.id);
           return <div key={tile.id} onClick={()=>{setSelT(tile.id===selT?null:tile.id);setEditing(false);}} style={{background:m.dc>=3?"rgba(255,215,0,0.07)":m.dc>=1?"rgba(205,127,50,0.04)":"rgba(255,255,255,0.01)",border:"2px solid "+(iS?"#ffd700":iH?"#60a5fa":m.dc>=3?"rgba(255,215,0,0.18)":"rgba(255,255,255,0.04)"),borderRadius:4,padding:"3px 2px",cursor:"pointer",textAlign:"center",minHeight:54,position:"relative",transition:"all 0.15s",transform:iS?"scale(1.05)":"scale(1)"}}>
