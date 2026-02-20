@@ -23,21 +23,21 @@
 }
 
 .app-main-grid {
-  grid-template-columns: minmax(360px, 520px) minmax(280px, 400px);
-  justify-content: center;
+  grid-template-columns: 1fr minmax(320px, 420px);
 }
 
 .board-pane {
   width: 100%;
+  min-width: 0;
 }
 
 .board-grid {
   width: 100%;
-  max-width: 520px;
+  max-width: 1060px;
 }
 
 .details-pane {
-  max-width: 400px;
+  max-width: 460px;
 }
 
 .kpi-row {
@@ -50,8 +50,9 @@
 
 .tab-btn {
   flex: 1 0 170px;
-  min-height: 54px;
-  padding: 8px 10px;
+  min-height: 60px;
+  padding: 10px 12px;
+  font-size: 12px;
 }
 
 .tab-content {
@@ -64,7 +65,7 @@
   }
 
   .board-grid {
-    max-width: 600px;
+    max-width: 720px;
   }
 
   .details-pane {

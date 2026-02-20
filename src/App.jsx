@@ -1896,14 +1896,14 @@ export default function App(){
   const hlTiles=hlL?LINES.find(l=>l.name===hlL)?.tiles||[]:[];
   const tc=TEAM_COLORS[selectedTeam]||"#ffd700";
 
-  return <div className="app-root" style={{padding:14,boxSizing:"border-box"}}>
+  return <div className="app-root" style={{padding:14,boxSizing:"border-box",maxWidth:1500,margin:"0 auto"}}>
     <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
-    <div className="app-header" style={{textAlign:"center",marginBottom:8}}>
-      <div style={{fontSize:8,letterSpacing:4,color:"#7a6a4a",textTransform:"uppercase"}}>Old School RuneScape</div>
-      <h1 style={{fontSize:22,fontWeight:900,margin:"2px 0",letterSpacing:2,background:"linear-gradient(90deg,#cd7f32,#ffd700,#cd7f32)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>BINGO OPTIMIZER</h1>
+    <div className="app-header" style={{textAlign:"center",marginBottom:16}}>
+      <div style={{fontSize:15,letterSpacing:7,color:"#7a6a4a",textTransform:"uppercase"}}>Old School RuneScape</div>
+      <h1 style={{fontSize:56,fontWeight:900,margin:"4px 0 2px",letterSpacing:4,background:"linear-gradient(90deg,#cd7f32,#ffd700,#cd7f32)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>BINGO OPTIMIZER</h1>
       <div className="app-header-actions" style={{display:"flex",justifyContent:"center",alignItems:"center",gap:10,marginTop:4}}>
         <Countdown/>
-        <button onClick={clearAll} style={{fontSize:7,background:"rgba(255,220,150,0.04)",color:"#7a6a4a",border:"1px solid rgba(255,220,150,0.10)",borderRadius:2,padding:"1px 6px",cursor:"pointer",fontFamily:"inherit"}}>clear wiki cache</button>
+        <button onClick={clearAll} style={{fontSize:9,background:"rgba(255,220,150,0.04)",color:"#7a6a4a",border:"1px solid rgba(255,220,150,0.10)",borderRadius:2,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit"}}>clear wiki cache</button>
       </div>
     </div>
 
@@ -1916,13 +1916,13 @@ export default function App(){
           const elites=players.filter(p=>(p.inferno+p.colo)>0).length;
           const isMe=name==="SoccerTheNub";
           return <button key={name} onClick={()=>setSelectedTeam(name)} style={{
-            padding:"6px 10px",borderRadius:4,cursor:"pointer",fontFamily:"inherit",
+            padding:"8px 14px",borderRadius:5,cursor:"pointer",fontFamily:"inherit",
             background:selectedTeam===name?`${tc2}22`:"rgba(255,255,255,0.015)",
             border:`2px solid ${selectedTeam===name?tc2:tc2+"33"}`,
             color:selectedTeam===name?tc2:"#555",transition:"all 0.15s"
           }}>
-            <div style={{fontSize:10,fontWeight:800,letterSpacing:1}}>{name}{isMe?" ★":""}</div>
-            <div style={{display:"flex",gap:6,marginTop:2,fontSize:7,color:selectedTeam===name?tc2+"aa":"#444"}}>
+            <div style={{fontSize:15,fontWeight:800,letterSpacing:1}}>{name}{isMe?" ★":""}</div>
+            <div style={{display:"flex",gap:6,marginTop:3,fontSize:11,color:selectedTeam===name?tc2+"aa":"#444"}}>
               <span>SECS {avgSecs}</span>
               <span>{totalHrs}h</span>
               <span>🔥{elites}</span>
@@ -1931,19 +1931,19 @@ export default function App(){
         })}
       </div>
       <div className="app-controls-row" style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap",padding:"4px 8px"}}>
-        <label style={{display:"flex",alignItems:"center",gap:4,fontSize:10,color:"#8a7a5a"}}>Sort
-          <select value={sort} onChange={e=>setSort(e.target.value)} style={{background:"#28241a",color:"#c8b898",border:"1px solid rgba(255,220,150,0.15)",borderRadius:3,padding:"2px 4px",fontSize:10}}>
+        <label style={{display:"flex",alignItems:"center",gap:4,fontSize:12,color:"#8a7a5a"}}>Sort
+          <select value={sort} onChange={e=>setSort(e.target.value)} style={{background:"#28241a",color:"#c8b898",border:"1px solid rgba(255,220,150,0.15)",borderRadius:3,padding:"3px 6px",fontSize:12}}>
             <option value="smart">Smart</option><option value="fast">Cheapest</option><option value="value">Value</option><option value="line">Line</option>
           </select>
         </label>
-        <span style={{fontSize:8,color:"#6a5a3a",alignSelf:"center"}}>{tSz} players · {Math.round(teamPlayers.reduce((s,p)=>s+playerEventHours(p.hours,'floor'),0))}h floor · {Math.round(teamPlayers.reduce((s,p)=>s+playerEventHours(p.hours,'expected'),0))}h expected</span>
+        <span style={{fontSize:11,color:"#6a5a3a",alignSelf:"center"}}>{tSz} players · {Math.round(teamPlayers.reduce((s,p)=>s+playerEventHours(p.hours,'floor'),0))}h floor · {Math.round(teamPlayers.reduce((s,p)=>s+playerEventHours(p.hours,'expected'),0))}h expected</span>
       </div>
     </div>
 
-    <div className="kpi-row" style={{display:"flex",gap:5,justifyContent:"center",flexWrap:"wrap",marginBottom:8}}>
+    <div className="kpi-row" style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap",marginBottom:14}}>
       {[{l:"Pts",v:st.total,s:st.tp+"+"+st.lp,c:"#ffd700"},{l:"Gold",v:st.g+"/10",s:"bingos",c:"#ffd700"},{l:"Silver",v:st.sv+"/10",s:"bingos",c:"#c0c0c0"},{l:"Bronze",v:st.b+"/10",s:"bingos",c:"#cd7f32"},{l:"Rem hrs",v:Math.round(st.hl)+"h",s:"team-scaled",c:"#f472b6"}].map((s,i)=>(
-        <div key={i} style={{background:"rgba(255,220,150,0.05)",borderRadius:4,padding:"5px 9px",border:"1px solid rgba(255,220,150,0.12)",textAlign:"center",minWidth:65}}>
-          <div style={{fontSize:7,color:"#8a7a5a",letterSpacing:1}}>{s.l}</div><div style={{fontSize:15,fontWeight:900,color:s.c}}>{s.v}</div><div style={{fontSize:7,color:"#6a5a3a"}}>{s.s}</div>
+        <div key={i} style={{background:"rgba(255,220,150,0.06)",borderRadius:6,padding:"12px 22px",border:"1px solid rgba(255,220,150,0.18)",textAlign:"center",minWidth:110}}>
+          <div style={{fontSize:13,color:"#8a7a5a",letterSpacing:2,textTransform:"uppercase"}}>{s.l}</div><div style={{fontSize:34,fontWeight:900,color:s.c,lineHeight:1.1}}>{s.v}</div><div style={{fontSize:12,color:"#6a5a3a",marginTop:2}}>{s.s}</div>
         </div>
       ))}
     </div>
@@ -1952,17 +1952,17 @@ export default function App(){
 
     <div className="app-main-grid" style={{display:"grid",gap:12,alignItems:"flex-start"}}>
       <div className="board-pane">
-        <div className="board-grid" style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:4,marginBottom:0}}>
+        <div className="board-grid" style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6,marginBottom:0}}>
           {tiles.map(tile=>{const m=met.find(t=>t.id===tile.id),rk=pri.findIndex(t=>t.id===tile.id),iS=selT===tile.id,iH=hlTiles.includes(tile.id);
           const mode = tile.workMode || defaultWorkMode(tile);
-          return <div key={tile.id} onClick={()=>{setSelT(tile.id===selT?null:tile.id);setEditing(false);}} style={{background:m.dc>=3?"rgba(255,215,0,0.10)":m.dc>=1?"rgba(205,127,50,0.07)":"rgba(255,220,150,0.03)",border:"2px solid "+(iS?"#ffd700":iH?"#60a5fa":m.dc>=3?"rgba(255,215,0,0.25)":"rgba(255,220,150,0.10)"),borderRadius:4,padding:"4px 2px",cursor:"pointer",textAlign:"center",minHeight:54,position:"relative",transition:"all 0.15s",transform:iS?"scale(1.05)":"scale(1)"}}>
-            {rk>=0&&rk<5&&m.dc<3&&<div style={{position:"absolute",top:-3,right:-3,zIndex:2,width:13,height:13,borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:900,color:"#000",background:rk===0?"#ff3333":rk<3?"#ff8800":"#ffcc00"}}>{rk+1}</div>}
-            <div style={{position:"absolute",top:2,left:2,width:3,height:3,borderRadius:2,background:CC[tile.cat]}}/>
-            <div title={modeHint(mode)} style={{position:"absolute",top:2,right:2,fontSize:5,color:"#8ab4f8",fontWeight:700}}>{modeLabel(mode)}</div>
-            <div style={{fontSize:7,color:"#7a6a4a",fontWeight:600}}>#{tile.id}</div>
-            <div style={{fontSize:8,fontWeight:700,color:m.dc>=3?"#ffd700":"#a09070",lineHeight:1.1,margin:"1px 0 2px"}}>{tile.name}</div>
+          return <div key={tile.id} onClick={()=>{setSelT(tile.id===selT?null:tile.id);setEditing(false);}} style={{background:m.dc>=3?"rgba(255,215,0,0.10)":m.dc>=1?"rgba(205,127,50,0.07)":"rgba(255,220,150,0.03)",border:"2px solid "+(iS?"#ffd700":iH?"#60a5fa":m.dc>=3?"rgba(255,215,0,0.25)":"rgba(255,220,150,0.10)"),borderRadius:6,padding:"10px 5px",cursor:"pointer",textAlign:"center",minHeight:110,position:"relative",transition:"all 0.15s",transform:iS?"scale(1.05)":"scale(1)"}}>
+            {rk>=0&&rk<5&&m.dc<3&&<div style={{position:"absolute",top:-5,right:-5,zIndex:2,width:22,height:22,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:"#000",background:rk===0?"#ff3333":rk<3?"#ff8800":"#ffcc00"}}>{rk+1}</div>}
+            <div style={{position:"absolute",top:4,left:4,width:6,height:6,borderRadius:3,background:CC[tile.cat]}}/>
+            <div title={modeHint(mode)} style={{position:"absolute",top:4,right:4,fontSize:9,color:"#8ab4f8",fontWeight:700}}>{modeLabel(mode)}</div>
+            <div style={{fontSize:13,color:"#7a6a4a",fontWeight:600}}>#{tile.id}</div>
+            <div style={{fontSize:14,fontWeight:700,color:m.dc>=3?"#ffd700":"#a09070",lineHeight:1.15,margin:"4px 0 5px"}}>{tile.name}</div>
             <Dots c={m.dc}/>
-            <div style={{fontSize:6,color:"#6a5a3a",marginTop:1}}>{m.dc>=3?"DONE":"~"+Math.round(m.eH)+"h"}</div>
+            <div style={{fontSize:12,color:"#6a5a3a",marginTop:4}}>{m.dc>=3?"DONE":"~"+Math.round(m.eH)+"h"}</div>
           </div>;})}
         </div>
         <ProgressChart completionLog={completionLog} tiles={tiles} doneCount={done.size}/>
@@ -1970,50 +1970,50 @@ export default function App(){
 
       <div className="details-pane" style={{minWidth:0}}>
 
-        {/* Tile detail — shown first so it's immediately visible on click */}
-        {sel&&!editing&&<div style={{background:"rgba(255,220,150,0.04)",borderRadius:5,border:"1px solid rgba(255,215,0,0.12)",padding:"5px 8px",marginBottom:6}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
-            <div><div style={{display:"flex",alignItems:"center",gap:3,flexWrap:"wrap"}}><span style={{fontSize:7,padding:"1px 4px",borderRadius:2,background:CC[sel.cat],color:"#fff",fontWeight:700}}>{sel.cat}</span><span style={{fontSize:7,padding:"1px 4px",borderRadius:2,background:"rgba(96,165,250,0.12)",color:"#60a5fa",fontWeight:700}}>{sel.workMode || defaultWorkMode(sel)}</span><span style={{fontSize:12,fontWeight:800,color:"#ffd700"}}>#{sel.id} {sel.name}</span></div>{sel.notes&&<p style={{fontSize:7,color:"#8a7a5a",margin:"1px 0 0"}}>{sel.notes}</p>}</div>
-            <button onClick={()=>setEditing(true)} style={{fontSize:8,background:"rgba(96,165,250,0.12)",color:"#60a5fa",border:"1px solid rgba(96,165,250,0.3)",borderRadius:3,padding:"2px 6px",cursor:"pointer",fontWeight:600,flexShrink:0,marginLeft:4}}>Edit</button>
+        {/* Tile detail — top of right column, expands above priority list */}
+        {sel&&!editing&&<div style={{background:"rgba(255,220,150,0.04)",borderRadius:5,border:"1px solid rgba(255,215,0,0.12)",padding:"8px 12px",marginBottom:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+            <div><div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}><span style={{fontSize:10,padding:"2px 6px",borderRadius:2,background:CC[sel.cat],color:"#fff",fontWeight:700}}>{sel.cat}</span><span style={{fontSize:10,padding:"2px 6px",borderRadius:2,background:"rgba(96,165,250,0.12)",color:"#60a5fa",fontWeight:700}}>{sel.workMode || defaultWorkMode(sel)}</span><span style={{fontSize:16,fontWeight:800,color:"#ffd700"}}>#{sel.id} {sel.name}</span></div>{sel.notes&&<p style={{fontSize:10,color:"#8a7a5a",margin:"2px 0 0"}}>{sel.notes}</p>}</div>
+            <button onClick={()=>setEditing(true)} style={{fontSize:11,background:"rgba(96,165,250,0.12)",color:"#60a5fa",border:"1px solid rgba(96,165,250,0.3)",borderRadius:3,padding:"3px 8px",cursor:"pointer",fontWeight:600,flexShrink:0,marginLeft:6}}>Edit</button>
           </div>
           {sel.tasks.map((task)=>{const isDone=done.has(task.id),isRec=sel.cheapest&&sel.cheapest.id===task.id&&!isDone;const tType=normalizeTaskType(task.type);
-          return <div key={task.id} style={{display:"flex",alignItems:"flex-start",gap:5,background:isDone?"rgba(74,222,128,0.05)":isRec?"rgba(255,215,0,0.05)":"rgba(255,220,150,0.02)",borderRadius:3,padding:"3px 5px",marginBottom:2,border:"1px solid "+(isDone?"rgba(74,222,128,0.14)":isRec?"rgba(255,215,0,0.18)":"rgba(255,220,150,0.06)")}}>
-            <div onClick={e=>{e.stopPropagation();toggleDone(task.id);}} style={{width:14,height:14,borderRadius:3,flexShrink:0,cursor:"pointer",marginTop:1,display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid "+(isDone?"#4ade80":isRec?"#ffd700":"#5a4a30"),background:isDone?"rgba(74,222,128,0.2)":"transparent",fontSize:9,color:"#4ade80",fontWeight:900}}>{isDone?"✓":""}</div>
+          return <div key={task.id} style={{display:"flex",alignItems:"flex-start",gap:6,background:isDone?"rgba(74,222,128,0.05)":isRec?"rgba(255,215,0,0.05)":"rgba(255,220,150,0.02)",borderRadius:3,padding:"4px 6px",marginBottom:3,border:"1px solid "+(isDone?"rgba(74,222,128,0.14)":isRec?"rgba(255,215,0,0.18)":"rgba(255,220,150,0.06)")}}>
+            <div onClick={e=>{e.stopPropagation();toggleDone(task.id);}} style={{width:17,height:17,borderRadius:3,flexShrink:0,cursor:"pointer",marginTop:1,display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid "+(isDone?"#4ade80":isRec?"#ffd700":"#5a4a30"),background:isDone?"rgba(74,222,128,0.2)":"transparent",fontSize:11,color:"#4ade80",fontWeight:900}}>{isDone?"✓":""}</div>
             <div style={{flex:1,opacity:isDone?0.5:1}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:4}}>
-                <span style={{fontSize:9,fontWeight:600,color:isDone?"#4ade80":isRec?"#ffd700":"#c8b898"}}>{isRec&&<span style={{fontSize:7,marginRight:2}}>⭐</span>}{task.desc}</span>
-                <div style={{display:"flex",alignItems:"center",gap:3,flexShrink:0}}>
-                  <span style={{fontSize:6,color:"#8a7a5a",background:"rgba(255,220,150,0.06)",padding:"0 3px",borderRadius:1}}>{taskTypeLabel(tType)}</span>
-                  {task.wikiEnriched&&<span style={{fontSize:6,color:task.wikiConfidence==="high"?"#4ade80":task.wikiConfidence==="medium"?"#ffd700":"#ff6b6b",background:"rgba(0,0,0,0.2)",padding:"0 3px",borderRadius:1}}>🌐</span>}
-                  <span style={{fontSize:7,color:task.wikiEnriched?"#60a5fa":"#7a6a4a"}}>{task.estHours}h{normalizeTaskType(task.type)==="kc"&&taskTargetAmount(task)>0?` · ${taskDisplayHours(task).toFixed(1)}h rem`:""}</span>
+                <span style={{fontSize:11,fontWeight:600,color:isDone?"#4ade80":isRec?"#ffd700":"#c8b898"}}>{isRec&&<span style={{fontSize:9,marginRight:3}}>⭐</span>}{task.desc}</span>
+                <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+                  <span style={{fontSize:9,color:"#8a7a5a",background:"rgba(255,220,150,0.06)",padding:"1px 4px",borderRadius:1}}>{taskTypeLabel(tType)}</span>
+                  {task.wikiEnriched&&<span style={{fontSize:9,color:task.wikiConfidence==="high"?"#4ade80":task.wikiConfidence==="medium"?"#ffd700":"#ff6b6b",background:"rgba(0,0,0,0.2)",padding:"1px 4px",borderRadius:1}}>🌐</span>}
+                  <span style={{fontSize:10,color:task.wikiEnriched?"#60a5fa":"#7a6a4a"}}>{task.estHours}h{normalizeTaskType(task.type)==="kc"&&taskTargetAmount(task)>0?` · ${taskDisplayHours(task).toFixed(1)}h rem`:""}</span>
                 </div>
               </div>
-              {task.notes&&<div style={{fontSize:7,color:"#8a7a5a"}}>{task.notes}</div>}
-              {task.wikiNotes&&<div style={{fontSize:7,color:"#4a6a3a",fontStyle:"italic"}}>{task.wikiNotes}</div>}
+              {task.notes&&<div style={{fontSize:10,color:"#8a7a5a"}}>{task.notes}</div>}
+              {task.wikiNotes&&<div style={{fontSize:10,color:"#4a6a3a",fontStyle:"italic"}}>{task.wikiNotes}</div>}
               {!isDone&&<VBar task={task}/>}
-              {isRec&&<div style={{fontSize:7,color:"#ffd700",marginTop:1,fontWeight:600}}>Recommended next</div>}
+              {isRec&&<div style={{fontSize:10,color:"#ffd700",marginTop:2,fontWeight:600}}>Recommended next</div>}
             </div>
           </div>;})}
-          <div style={{display:"flex",gap:3,marginTop:4,flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:4,marginTop:6,flexWrap:"wrap"}}>
             {[{l:"Eff",v:sel.ef.toFixed(2),c:sel.ef>1?"#4ade80":"#ffd700"},{l:"Scale",v:"×"+sel.effSc.toFixed(1),c:"#60a5fa"},{l:"Line",v:"+"+sel.lS,c:sel.lS>50?"#ff3333":"#60a5fa"},{l:"Next",v:sel.cheapest?Math.round(sel.cheapH)+"h":"-",c:"#ffd700"}].map((s,i)=>(
-              <div key={i} style={{fontSize:7,background:"rgba(255,220,150,0.04)",padding:"1px 4px",borderRadius:2}}><span style={{color:"#8a7a5a"}}>{s.l}:</span><b style={{color:s.c}}>{s.v}</b></div>
+              <div key={i} style={{fontSize:10,background:"rgba(255,220,150,0.04)",padding:"2px 6px",borderRadius:2}}><span style={{color:"#8a7a5a"}}>{s.l}:</span><b style={{color:s.c}}>{s.v}</b></div>
             ))}
-            {sel.nL.length>0&&<span style={{fontSize:7,color:"#ff5555",fontWeight:600}}>Line: {sel.nL.map(l=>l.name+"("+l.need+")").join(", ")}</span>}
+            {sel.nL.length>0&&<span style={{fontSize:10,color:"#ff5555",fontWeight:600}}>Line: {sel.nL.map(l=>l.name+"("+l.need+")").join(", ")}</span>}
           </div>
         </div>}
-        {sel&&editing&&<div style={{marginBottom:6}}><TileEditor tile={tiles.find(t=>t.id===sel.id)} onSave={saveTile} onCancel={()=>setEditing(false)} enrichTask={enrichTask} enriching={enriching} wikiData={wikiData}/></div>}
+        {sel&&editing&&<div style={{marginBottom:8}}><TileEditor tile={tiles.find(t=>t.id===sel.id)} onSave={saveTile} onCancel={()=>setEditing(false)} enrichTask={enrichTask} enriching={enriching} wikiData={wikiData}/></div>}
 
-        {/* Priority list — compact single-line rows, scrollable when detail is open */}
-        <div style={{fontSize:8,color:"#8a7a5a",marginBottom:2,fontWeight:600,letterSpacing:2}}>PRIORITY</div>
-        <div style={{maxHeight:sel?220:undefined,overflowY:sel?"auto":undefined}}>
+        {/* Priority list — scrollable when detail is open */}
+        <div style={{fontSize:11,color:"#8a7a5a",marginBottom:4,fontWeight:600,letterSpacing:2}}>PRIORITY</div>
+        <div style={{maxHeight:sel?260:undefined,overflowY:sel?"auto":undefined}}>
           {pri.map((tile,idx)=>(
-            <div key={tile.id} onClick={()=>{setSelT(tile.id);setEditing(false);}} style={{display:"flex",alignItems:"center",gap:4,padding:"2px 3px",borderRadius:2,cursor:"pointer",borderLeft:selT===tile.id?"2px solid #ffd700":"2px solid transparent",background:selT===tile.id?"rgba(255,215,0,0.05)":"transparent"}}>
-              <span style={{fontSize:7,fontWeight:900,color:idx<3?"#ff5555":idx<7?"#ff8c00":"#6a5a3a",minWidth:14,textAlign:"right",flexShrink:0}}>{idx+1}</span>
-              <div style={{width:2,height:10,borderRadius:1,background:CC[tile.cat],flexShrink:0}}/>
-              <span style={{fontSize:9,fontWeight:600,color:selT===tile.id?"#ffd700":"#b8a878",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>#{tile.id} {tile.name}</span>
-              {tile.cheapest&&<span style={{fontSize:7,color:"#6a5a3a",flexShrink:0}}>{Math.round(tile.cheapH)}h</span>}
-              {tile.lS>50&&<span style={{fontSize:6,color:"#ff5555",flexShrink:0}}>LINE</span>}
-              <span style={{fontSize:8,fontWeight:700,color:tile.sm>15?"#4ade80":tile.sm>5?"#ffd700":"#6a5a3a",flexShrink:0,minWidth:26,textAlign:"right"}}>{tile.sm.toFixed(1)}</span>
+            <div key={tile.id} onClick={()=>{setSelT(tile.id);setEditing(false);}} style={{display:"flex",alignItems:"center",gap:5,padding:"3px 4px",borderRadius:3,cursor:"pointer",borderLeft:selT===tile.id?"3px solid #ffd700":"3px solid transparent",background:selT===tile.id?"rgba(255,215,0,0.05)":"transparent"}}>
+              <span style={{fontSize:10,fontWeight:900,color:idx<3?"#ff5555":idx<7?"#ff8c00":"#6a5a3a",minWidth:18,textAlign:"right",flexShrink:0}}>{idx+1}</span>
+              <div style={{width:3,height:13,borderRadius:1,background:CC[tile.cat],flexShrink:0}}/>
+              <span style={{fontSize:12,fontWeight:600,color:selT===tile.id?"#ffd700":"#b8a878",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>#{tile.id} {tile.name}</span>
+              {tile.cheapest&&<span style={{fontSize:10,color:"#6a5a3a",flexShrink:0}}>{Math.round(tile.cheapH)}h</span>}
+              {tile.lS>50&&<span style={{fontSize:9,color:"#ff5555",flexShrink:0}}>LINE</span>}
+              <span style={{fontSize:11,fontWeight:700,color:tile.sm>15?"#4ade80":tile.sm>5?"#ffd700":"#6a5a3a",flexShrink:0,minWidth:30,textAlign:"right"}}>{tile.sm.toFixed(1)}</span>
             </div>
           ))}
         </div>
