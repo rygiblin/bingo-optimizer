@@ -4,6 +4,12 @@
   box-sizing: border-box;
 }
 
+/* Global scale: makes the app render at 150% so it reads well on fullscreen/1080p+
+   To adjust: change zoom value (1.0 = native, 1.25 = 125%, 1.5 = 150%) */
+html {
+  zoom: 1.5;
+}
+
 html,
 body,
 #root {

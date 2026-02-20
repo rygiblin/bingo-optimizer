@@ -1,3 +1,4 @@
+/* Warm parchment palette — all accent/medal/category colors live in App.jsx */
 :root {
   --bg-main: #1e1b12;
   --bg-elev-1: #28241a;
@@ -22,6 +23,7 @@
   align-items: stretch;
 }
 
+/* 2-column layout: board fills remaining space, details pane fixed-width right */
 .app-main-grid {
   grid-template-columns: 1fr minmax(320px, 420px);
 }
@@ -31,11 +33,13 @@
   min-width: 0;
 }
 
+/* Board grows to fill left column; max-width prevents over-stretching on ultrawide */
 .board-grid {
   width: 100%;
   max-width: 1060px;
 }
 
+/* Right column: tile detail + priority list */
 .details-pane {
   max-width: 460px;
 }
@@ -50,13 +54,16 @@
 
 .tab-btn {
   flex: 1 0 170px;
-  min-height: 60px;
+  min-height: 64px;
   padding: 10px 12px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
+/* Tab content gets an extra zoom on top of the global html zoom (index.css)
+   giving tab components ~1.65x effective scale vs 1.5x for the rest of the page */
 .tab-content {
   background: linear-gradient(180deg, rgba(255, 220, 150, 0.015), rgba(255, 220, 150, 0));
+  zoom: 1.1;
 }
 
 @media (max-width: 1100px) {

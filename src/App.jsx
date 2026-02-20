@@ -201,9 +201,10 @@ const INIT_TILES=[
   {id:25,name:"Leftovers",tasks:[{id:"25a",desc:"Tormented Synapse",type:"drop",estHours:9.1,notes:"Sire/GG"},{id:"25b",desc:"Phosani Unique",type:"drop",estHours:15.1,notes:"NOT reg NM"},{id:"25c",desc:"3x Zenyte Shards",type:"drop",estHours:13,notes:"Gorillas"}],cat:"pvm",notes:"Good money+xp"}
 ];
 
+// localStorage keys — changing these invalidates existing saved state
 const TILE_STATE_KEY = "bingo:tiles:v1";
 const DONE_STATE_KEY = "bingo:done:v1";
-const COMPLETION_LOG_KEY = "bingo:completion_log:v1";
+const COMPLETION_LOG_KEY = "bingo:completion_log:v1"; // {taskId, ts, marking}[] for progress chart
 
 function defaultWorkMode(tile) {
   if ((tile.tasks || []).some(t => t.type === "raid")) return "raid";
@@ -637,6 +638,7 @@ function VBar({task}){
   return <div style={{marginTop:2}}><div style={{display:"flex",gap:6,fontSize:8,color:"#555",flexWrap:"wrap"}}><span>Lucky:<b style={{color:"#4ade80"}}>{l.toFixed(1)}h</b></span><span>Exp:<b style={{color:"#ffd700"}}>{h.toFixed(1)}h</b></span><span>Dry:<b style={{color:"#ff8c00"}}>{d.toFixed(1)}h</b></span></div><div style={{position:"relative",height:4,background:"rgba(255,255,255,0.04)",borderRadius:2,marginTop:2,overflow:"hidden"}}><div style={{position:"absolute",left:(l/sd*100)+"%",width:((d-l)/sd*100)+"%",height:"100%",background:"rgba(255,215,0,0.2)"}}/><div style={{position:"absolute",left:(m/sd*100)+"%",width:2,height:"100%",background:"#ffd700"}}/></div></div>;
 }
 
+// Inline editor for a single tile — handles estHours, notes, workMode, wiki enrich
 function TileEditor({tile, onSave, onCancel, enrichTask, enriching, wikiData}){
   const[name,setName]=useState(tile.name);
   const[notes,setNotes]=useState(tile.notes);
@@ -757,6 +759,7 @@ function Countdown(){
   </div>;
 }
 
+// Collapsible roster showing player stats + bulk wiki enrich button
 function RosterPanel({players, teamCap, enrichAll, enrichProgress, tiles, wikiData}){
   const[exp,setExp]=useState(false);
   const sorted=[...players].sort((a,b)=>b.secs-a.secs);
@@ -833,6 +836,7 @@ function RosterPanel({players, teamCap, enrichAll, enrichProgress, tiles, wikiDa
   </div>;
 }
 
+// Tab: Bronze/Silver/Gold scenario projections with hour budgets
 function Scenarios({done,tiles,teamPlayers,teamCap}){
   const[scens,setScens]=useState([{id:1,name:"Scenario A",medals:{},col:"#e74c3c"},{id:2,name:"Scenario B",medals:{},col:"#3498db"}]);
   const cyc=(si,tid)=>setScens(p=>p.map((s,i)=>{if(i!==si)return s;const c=s.medals[tid]||0,nx=c>=3?0:c+1,nm={...s.medals};if(nx===0)delete nm[tid];else nm[tid]=nx;return{...s,medals:nm};}));
@@ -956,6 +960,7 @@ function tileHoursForTarget(tile, targetMedal, doneTasks, effSc) {
   return h;
 }
 
+// Tab: per-line bingo probability planner with per-tile player assignments
 function LinePlanner({done, tiles, teamPlayers, teamCap}) {
   // ── State ──────────────────────────────────────────────────────────────────
   const [hoveredLine, setHoveredLine] = useState(null);
@@ -1330,6 +1335,7 @@ function LinePlanner({done, tiles, teamPlayers, teamCap}) {
 }
 
 // ─── WHO'S ONLINE ─────────────────────────────────────────────────────────────
+// Tab: active-hours filter showing which players are online and their priority tasks
 function WhosOnline({done, tiles, teamPlayers, teamCap}) {
   const [online, setOnline] = useState(new Set());
   const [sort, setSort] = useState("smart");
@@ -1519,6 +1525,7 @@ function WhosOnline({done, tiles, teamPlayers, teamCap}) {
   </div>;
 }
 
+// Tab: AI-generated Discord strategy directive via /api/strategy-message
 function StrategyCenter({selectedTeam, pri, eventEndMs}) {
   const [windowHours, setWindowHours] = useState(6);
   const [tone, setTone] = useState("direct");
@@ -1666,6 +1673,7 @@ function StrategyCenter({selectedTeam, pri, eventEndMs}) {
   </div>;
 }
 
+// Tab: side-by-side score comparison across all 4 teams
 function TeamCompare(){
   const cats=["raids","pvm","slayer","skilling","mass"];
   const teamData=useMemo(()=>Object.entries(TEAMS).map(([name,players])=>{
@@ -1741,6 +1749,8 @@ function TeamCompare(){
   </div>;
 }
 
+// SVG step chart: cumulative score over event time vs ideal pace reference line
+// Data persisted in localStorage under COMPLETION_LOG_KEY
 function ProgressChart({ completionLog, tiles, doneCount }) {
   const VB_W=500, VB_H=72, PL=28, PR=6, PT=5, PB=20;
   const CW=VB_W-PL-PR, CH=VB_H-PT-PB;
